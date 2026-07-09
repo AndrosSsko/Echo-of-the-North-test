@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3 uid="uid://efgtfuq4af2o"]
+
+[ext_resource type="Script" uid="uid://i4mlq7nmxwmv" path="res://camera_controller.gd" id="1_il6u3"]
+[ext_resource type="Script" uid="uid://v53x87v16oap" path="res://scripts/camera_pivot.gd" id="2_7shkm"]
+[ext_resource type="Script" uid="uid://b0ignoct3bi0o" path="res://scripts/top_down_camera.gd" id="3_bojx4"]
+
+[node name="Camera_Controller" type="Node3D"]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 12, 12)
+script = ExtResource("1_il6u3")
+
+[node name="Camera_Pivot" type="Node3D" parent="."]
+script = ExtResource("2_7shkm")
+
+[node name="Camera3D" type="Camera3D" parent="Camera_Pivot"]
+script = ExtResource("3_bojx4")
+tracking_offset = Vector3(0, 12, 16)

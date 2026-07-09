@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3 uid="uid://7rs5qotn0uiy"]
+
+[ext_resource type="Script" uid="uid://26qjwuhj251t" path="res://scripts/stealth_bola.gd" id="1_2vlee"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_trceg"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_a8y0u"]
+top_radius = 0.05
+bottom_radius = 0.05
+height = 1.2
+
+[node name="Stealth_Bola" type="Area3D"]
+script = ExtResource("1_2vlee")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_trceg")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_a8y0u")

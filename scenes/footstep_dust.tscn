@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3 uid="uid://bq52h4awfe2vr"]
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_g8iok"]
+direction = Vector3(0, 0.5, 1)
+spread = 25.0
+initial_velocity_min = 3.0
+initial_velocity_max = 5.0
+gravity = Vector3(0, -1, 0)
+scale_max = 2.0
+scale_over_velocity_min = 0.29999998
+scale_over_velocity_max = 0.59999996
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_g8iok"]
+shading_mode = 0
+albedo_color = Color(0.8901961, 0.85490197, 0.7882353, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_r6avm"]
+material = SubResource("StandardMaterial3D_g8iok")
+radius = 0.4
+height = 0.4
+
+[node name="Footstep_Dust" type="GPUParticles3D"]
+emitting = false
+amount = 6
+lifetime = 0.35000000000000003
+one_shot = true
+explosiveness = 0.85
+process_material = SubResource("ParticleProcessMaterial_g8iok")
+draw_pass_1 = SubResource("SphereMesh_r6avm")

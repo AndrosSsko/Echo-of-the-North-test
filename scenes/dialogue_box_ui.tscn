@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3 uid="uid://dlemqewtp0yvv"]
+
+[ext_resource type="Script" uid="uid://s5l54qrtjrdm" path="res://scripts/dialogue_box_ui.gd" id="1_vatnp"]
+
+[node name="dialogue_box_ui" type="Panel"]
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_vatnp")
+
+[node name="Subtitle_Text" type="RichTextLabel" parent="."]
+custom_minimum_size = Vector2(500, 0)
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+bbcode_enabled = true
+autowrap_mode = 2
+
+[node name="Typewriter_Snd_Player" type="AudioStreamPlayer" parent="."]

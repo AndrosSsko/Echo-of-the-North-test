@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3 uid="uid://bomwccufnbnta"]
+
+[ext_resource type="Script" uid="uid://chn6gqxjfoed4" path="res://scripts/breakable_pottery.gd" id="1_fbvfs"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_s5agm"]
+height = 0.9
+radius = 0.35
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cdjn8"]
+
+[node name="Breakable_Pottery" type="RigidBody3D"]
+freeze = true
+contact_monitor = true
+max_contacts_reported = 1
+script = ExtResource("1_fbvfs")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_s5agm")
+
+[node name="Crush_Sensor" type="ShapeCast3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("BoxShape3D_cdjn8")

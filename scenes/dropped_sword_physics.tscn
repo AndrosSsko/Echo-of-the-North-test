@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://b2y7debdhpia8"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_t0gsn"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_qco10"]
+
+[node name="Dropped_Sword_Physics" type="RigidBody3D"]
+contact_monitor = true
+max_contacts_reported = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 1.2, 0, 0, 0)
+shape = SubResource("BoxShape3D_t0gsn")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_qco10")
