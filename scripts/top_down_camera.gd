@@ -15,14 +15,20 @@ extends Camera3D
 var target_character: CharacterBody3D = null
 
 func _ready() -> void:
+	# Deferred so this runs after every node in the scene has finished _ready(),
+	# instead of racing the Player's own add_to_group("PlayerGroup") call.
+	call_deferred("_acquire_target_character")
+
+func _acquire_target_character() -> void:
+	if is_instance_valid(target_character):
+		return
 	var players = get_tree().get_nodes_in_group("PlayerGroup")
 	if players.size() > 0:
-		target_character = players[0]
-	else:
-		push_error("Camera Error: No node with group 'PlayerGroup' found in scene tree.")
+		target_character = players[0] as CharacterBody3D
 
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(target_character):
+		_acquire_target_character() # Keep retrying — covers late-spawned/respawned players too
 		return
 		
 	# Calculate target destination using your verified camera placement tracking offset

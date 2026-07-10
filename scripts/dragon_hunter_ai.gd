@@ -514,6 +514,49 @@ func execute_cascade_trip_fall() -> void:
 				visual_mesh.position.y = original_mesh_y
 	)
 
+func execute_bowling_knockdown(knock_direction: Vector3, force: float, upward_force: float) -> void:
+	# Called by the player's slide tackle — the "cartoon bowling strike" hit.
+	# Reuses the same STUNNED channel as trip-fall/stealth-stun so recovery, cascading
+	# dominoes into nearby guards, and label/visual state all stay unified.
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.BOLA_STRUGGLE:
+		return
+
+	current_phase = PatrolPhase.STUNNED
+	current_suspicion_value = 0.0
+	cascade_slide_velocity = knock_direction * force
+
+	if is_instance_valid(thump_label_3d):
+		thump_label_3d.visible = true
+		thump_label_3d.text = "💫 BOWLED OVER! 💫"
+		thump_label_3d.modulate = Color("#ffaa00")
+
+	# Comedic launch: quick pop upward, spin, then flop flat on his back
+	if is_instance_valid(visual_mesh):
+		var launch_tween := create_tween()
+		launch_tween.tween_property(visual_mesh, "position:y", original_mesh_y + upward_force * 0.1, 0.12)
+		launch_tween.parallel().tween_property(visual_mesh, "rotation_degrees:z", 360.0, 0.25)
+		launch_tween.tween_property(visual_mesh, "position:y", -0.6, 0.18)
+		launch_tween.tween_callback(func():
+			if is_instance_valid(visual_mesh):
+				visual_mesh.rotation_degrees.x = -90.0
+				visual_mesh.rotation_degrees.z = 0.0
+		)
+
+	# Automatically wake him back up and reset his posture nodes after 3 seconds
+	get_tree().create_timer(3.0).timeout.connect(func():
+		if current_phase == PatrolPhase.STUNNED and is_instance_valid(thump_label_3d) and thump_label_3d.text == "💫 BOWLED OVER! 💫":
+			print("AI LOCOMOTION: Bowled-over guard scrambled back onto his feet.")
+			current_phase = PatrolPhase.MARCHING
+			current_thump_posture = max_thump_posture
+			thump_label_3d.visible = false
+			if is_instance_valid(visual_mesh):
+				visual_mesh.rotation_degrees.x = 0.0
+				visual_mesh.rotation_degrees.z = 0.0
+				visual_mesh.position.y = original_mesh_y
+	)
+
+
+
 func execute_player_capture() -> void:
 	current_suspicion_value = 0.0
 	current_phase = PatrolPhase.MARCHING

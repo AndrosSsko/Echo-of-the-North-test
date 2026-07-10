@@ -8,6 +8,10 @@ var current_locomotion_mode: LocomotionState = LocomotionState.STANDARD
 @export var sprint_speed_multiplier: float = 1.55
 @export var slide_impulse_velocity: float = 18.0
 @export var slide_friction_decay: float = 4.5
+@export var slope_boost_multiplier: float = 2.2   # How strongly downhill slopes accelerate the slide
+@export var max_slide_speed: float = 26.0          # Speed cap so steep hills don't launch her into orbit
+@export var bowling_strike_force: float = 14.0     # Horizontal knockback applied to smaller guards
+@export var bowling_strike_upward_force: float = 6.0 # Extra "comedic pop" launch height on impact
 
 var slide_duration_timer: float = 0.0
 @onready var core_capsule_collision: CollisionShape3D = $CollisionShape3D
@@ -43,6 +47,9 @@ var slide_duration_timer: float = 0.0
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 @onready var aim_line_visual: Node3D = $Aim_Line_Pointer
 @onready var ground_snapper: RayCast3D = $GroundSnapper
+@onready var shield_rig: Node3D = $VikingShieldRig
+@onready var shield_carry_pose: Node3D = $ShieldCarryPose
+@onready var shield_surf_pose: Node3D = $ShieldSurfPose
 @onready var ammo_label: Label = $"../HUD/Ammo_Container/Ammo_Tracker"
 @onready var radial_wheel_panel: Panel = $"../HUD/Radial_Wheel_UI"
 @onready var radial_title_label: RichTextLabel = $"../HUD/Radial_Wheel_UI/Selection_Title_Text"
@@ -163,23 +170,53 @@ func _physics_process(delta: float) -> void:
 	# === SHIELD-SURF / SLIDE STATE MACHINE ===
 	if current_locomotion_mode == LocomotionState.SLIDING:
 		slide_duration_timer -= delta
+
+		# 1. KINETIC FRICTION (natural drag that brings her back up to a walk on flat ground)
 		velocity.x = move_toward(velocity.x, 0.0, slide_friction_decay * delta)
 		velocity.z = move_toward(velocity.z, 0.0, slide_friction_decay * delta)
 
-		# 1. GROUND SNAPPING (The Shield-Surf Architecture)
+		# 2. SLOPE MOMENTUM (physics-based acceleration on hills/ramps/ruins)
+		if is_on_floor():
+			var floor_normal: Vector3 = get_floor_normal()
+			var gravity_vector: Vector3 = Vector3.DOWN * get_gravity().length()
+			# The component of gravity that runs ALONG the slope surface (not into it)
+			var slope_tangent_accel: Vector3 = gravity_vector - floor_normal * gravity_vector.dot(floor_normal)
+			velocity += slope_tangent_accel * slope_boost_multiplier * delta
+
+			# Cap horizontal speed so steep hills don't launch her into orbit
+			var horizontal_velocity: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
+			if horizontal_velocity.length() > max_slide_speed:
+				horizontal_velocity = horizontal_velocity.normalized() * max_slide_speed
+				velocity.x = horizontal_velocity.x
+				velocity.z = horizontal_velocity.z
+
+			# On a real slope, keep the slide alive instead of letting the timer cut it short
+			if floor_normal.y < 0.85:
+				slide_duration_timer = max(slide_duration_timer, 0.3)
+
+		# 3. GROUND SNAPPING (The Shield-Surf Architecture)
 		if ground_snapper.is_colliding():
 			var snap_target_y = ground_snapper.get_collision_point().y
 			global_position.y = lerp(global_position.y, snap_target_y, 20.0 * delta)
 
-		# 2. CAMERA TILT
+		# 4. CAMERA TILT
 		if is_instance_valid(camera):
 			camera.rotation.z = lerp_angle(camera.rotation.z, deg_to_rad(3.5), 8.0 * delta)
 
-		# 3. EXIT CONDITIONS
+		move_and_slide()
+
+		# 5. CARTOON BOWLING STRIKE — check what we just plowed into this frame
+		for i in get_slide_collision_count():
+			var collision: KinematicCollision3D = get_slide_collision(i)
+			var collider: Node = collision.get_collider()
+			if is_instance_valid(collider) and collider.is_in_group("EnemyGroup"):
+				_resolve_bowling_strike(collider, collision)
+				return # Bowling strike already handles the state transition this frame
+
+		# 6. EXIT CONDITIONS
 		if slide_duration_timer <= 0.0 or velocity.length_squared() < 4.0:
 			exit_viking_slide_state()
 
-		move_and_slide()
 		return # Prevents standard movement from overriding the slide
 
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -662,8 +699,11 @@ func execute_unified_gadget_fire() -> void:
 			# Spawn with a forward offset so it doesn't collide with the player
 			bola_instance.position = global_position + Vector3(0.0, 0.8, 0.0) + (target_facing_vector * 0.6)
 			
-			# ADD THIS LINE: This tells the Bola to ignore your player capsule
-			bola_instance.add_collision_exception_with(self)
+			# NOTE: The bola is an Area3D, not a PhysicsBody3D, so it has no
+			# add_collision_exception_with() method — that call always crashed here.
+			# stealth_bola.gd already protects against hitting the player itself:
+			# its CollisionShape3D stays disabled for the first 0.1s after spawn,
+			# and _on_obstacle_intersected() explicitly ignores "Player"/"Smudge"/PlayerGroup.
 			
 			get_parent().add_child(bola_instance)
 			
@@ -922,6 +962,55 @@ func _on_cascade_sensor_body_entered(body: Node) -> void:
 		if body.has_method("execute_cascade_stumble_fall"):
 			body.execute_cascade_stumble_fall()
 
+func _resolve_bowling_strike(guard: Node, collision: KinematicCollision3D) -> void:
+	# Knock the guard away from the direction Eira hit him from
+	var knock_direction: Vector3 = -collision.get_normal()
+	knock_direction.y = 0.0
+	if knock_direction.length_squared() < 0.001:
+		knock_direction = -global_transform.basis.z
+	knock_direction = knock_direction.normalized()
+
+	# Preferred path: let the guard's own script decide how to ragdoll/react.
+	# Add a matching `execute_bowling_knockdown(direction, force, upward_force)` to your guard script.
+	if guard.has_method("execute_bowling_knockdown"):
+		guard.execute_bowling_knockdown(knock_direction, bowling_strike_force, bowling_strike_upward_force)
+	elif guard is RigidBody3D:
+		guard.apply_central_impulse(knock_direction * bowling_strike_force + Vector3.UP * bowling_strike_upward_force)
+	else:
+		print("BOWLING STRIKE: '", guard.name, "' has no execute_bowling_knockdown() method and isn't a RigidBody3D — add one to react to slide hits.")
+
+	grant_salvage_bonus()
+	print("LOCOMOTION: Guard bowled clean off his feet!")
+
+	# Eira pops straight back up into a full sprint without losing her stride
+	exit_viking_slide_state()
+	current_locomotion_mode = LocomotionState.SPRINTING
+	var sprint_target_speed: float = movement_speed * sprint_speed_multiplier
+	var carried_speed: float = max(Vector3(velocity.x, 0.0, velocity.z).length(), sprint_target_speed)
+	var forward: Vector3 = -global_transform.basis.z.normalized()
+	velocity.x = forward.x * carried_speed
+	velocity.z = forward.z * carried_speed
+	move_and_slide()
+
+func _drop_shield_to_surf_pose() -> void:
+	# The "unclip and slam it down" moment — called the instant she starts sliding.
+	# Reads the ShieldSurfPose marker's transform, so you tune this by dragging
+	# the marker in the editor instead of editing numbers here.
+	if not is_instance_valid(shield_rig) or not is_instance_valid(shield_surf_pose): return
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(shield_rig, "global_position", shield_surf_pose.global_position, 0.1)
+	tween.tween_property(shield_rig, "global_rotation", shield_surf_pose.global_rotation, 0.1)
+
+func _raise_shield_to_carried_pose() -> void:
+	# Re-straps the shield to her arm as she pops back up out of the slide,
+	# using the ShieldCarryPose marker's transform.
+	if not is_instance_valid(shield_rig) or not is_instance_valid(shield_carry_pose): return
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(shield_rig, "global_position", shield_carry_pose.global_position, 0.2)
+	tween.tween_property(shield_rig, "global_rotation", shield_carry_pose.global_rotation, 0.2)
+
 func enter_viking_slide_state() -> void:
 	if current_locomotion_mode == LocomotionState.SLIDING: return 
 	
@@ -937,13 +1026,15 @@ func enter_viking_slide_state() -> void:
 	velocity.z = slide_dir.z * slide_impulse_velocity
 	
 	update_player_size(true) # Crouch
+	_drop_shield_to_surf_pose() # Unclip the shield and slam it down as a makeshift board
 	spawn_footstep_dust_cloud(true)
 	print("LOCOMOTION: Eira enters Shield-Surf.")
 
 func exit_viking_slide_state() -> void:
 	current_locomotion_mode = LocomotionState.STANDARD
 	update_player_size(false) # Stand up
+	_raise_shield_to_carried_pose() # Strap the shield back onto her arm
 	
-	if is_instance_valid(camera): 
+	if is_instance_valid(camera):
 		var tween = create_tween()
 		tween.tween_property(camera, "rotation:z", 0.0, 0.2)
