@@ -10,7 +10,7 @@ var current_locomotion_mode: LocomotionState = LocomotionState.STANDARD
 @export var slide_friction_decay: float = 4.5
 
 var slide_duration_timer: float = 0.0
-@onready var core_capsule_collision: CollisionShape3D = $CollisionShape3D
+
 
 # --- ARCHITECTURAL CONFIGURATION MATRIX ---
 @export_category("Movement Core")
@@ -36,10 +36,13 @@ var slide_duration_timer: float = 0.0
 
 # --- PRIVATE SYSTEM REFERENCES ---
 
+@onready var core_capsule_collision: CollisionShape3D = $Collision_Standing
+@onready var collision_standing: CollisionShape3D = $Collision_Standing
+@onready var collision_sliding: CollisionShape3D = $Collision_Sliding
 @export var camera: Camera3D
 @onready var melee_hitbox: Area3D = $Melee_Hitbox
 @onready var hitbox_collision: CollisionShape3D = $Melee_Hitbox/CollisionShape3D
-@onready var player_collision: CollisionShape3D = $CollisionShape3D
+@onready var player_collision: CollisionShape3D = $Collision_Standing
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 @onready var aim_line_visual: Node3D = $Aim_Line_Pointer
 @onready var ground_snapper: RayCast3D = $GroundSnapper
@@ -51,7 +54,7 @@ var slide_duration_timer: float = 0.0
 	$"../HUD/Health_Container/Heart_02",
 	$"../HUD/Health_Container/Heart_03"
 ]
-
+@onready var shield_skate_rig: Node3D = $Shield_Skate_Rig
 @export_category("Inventions Bag")
 @export var max_bola_ammo: int = 3
 @export var pebble_throw_cooldown: float = 0.8
@@ -160,27 +163,51 @@ func _physics_process(delta: float) -> void:
 		evaluate_radial_wheel_joystick_navigation()
 		return
 	
-	# === SHIELD-SURF / SLIDE STATE MACHINE ===
+	# === SHIELD-SURF / SLIDE STATE MACHINE (FIXED GROUND ANCHORS) ===
 	if current_locomotion_mode == LocomotionState.SLIDING:
+		# --- DYNAMIC SLIDE-CANCEL DODGE INTERCEPTOR ---
+		# Catches your spacebar or controller clicks mid-slide, un-freezing your agility instantly!
+		if Input.is_action_just_pressed("dodge_roll"):
+			var roll_input: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+			var roll_dir: Vector3 = Vector3.ZERO
+			
+			if roll_input.length_squared() > 0.01 and is_instance_valid(camera):
+				# A. USER DIR PATH: If the stick is pushed, roll toward the requested angle input
+				var cam_basis: Transform3D = camera.global_transform
+				roll_dir = (cam_basis.basis.x * roll_input.x + -cam_basis.basis.z * roll_input.y)
+				roll_dir.y = 0.0
+				roll_dir = roll_dir.normalized()
+			else:
+				# B. MOMENTUM TRAJECTORY PATHWAY: If hands are off the stick, 
+				# roll FORWARD along her active sliding velocity vector heading!
+				roll_dir = velocity.normalized()
+				roll_dir.y = 0.0
+			
+			initiate_dodge_roll(roll_dir)
+			return # Break out of the slide loop frame immediately!
+
 		slide_duration_timer -= delta
 		velocity.x = move_toward(velocity.x, 0.0, slide_friction_decay * delta)
 		velocity.z = move_toward(velocity.z, 0.0, slide_friction_decay * delta)
-
-		# 1. GROUND SNAPPING (The Shield-Surf Architecture)
-		if ground_snapper.is_colliding():
-			var snap_target_y = ground_snapper.get_collision_point().y
-			global_position.y = lerp(global_position.y, snap_target_y, 20.0 * delta)
-
-		# 2. CAMERA TILT
+		
+		# --- THE FIXED GROUND ANCHOR ENGINE ---
+		# Replaced your conflicting GroundSnapper lerp loops entirely!
+		# This cleanly forces her downward vectors onto native gravity tracks, keeping her flat.
+		if not is_on_floor():
+			velocity.y += get_gravity().y * delta
+		else:
+			velocity.y = 0.0
+			
+		# --- CAMERA SURF TILT ---
 		if is_instance_valid(camera):
 			camera.rotation.z = lerp_angle(camera.rotation.z, deg_to_rad(3.5), 8.0 * delta)
-
-		# 3. EXIT CONDITIONS
+			
+		# --- EXIT TRAJECTORY CHECK ---
 		if slide_duration_timer <= 0.0 or velocity.length_squared() < 4.0:
 			exit_viking_slide_state()
-
+			
 		move_and_slide()
-		return # Prevents standard movement from overriding the slide
+		return # Safe breakout block remains running cleanly for normal slide frames
 
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	
@@ -433,23 +460,23 @@ func toggle_crouch_state() -> void:
 
 func update_player_size(crouching: bool) -> void:
 	is_crouching = crouching
-	var target_height: float = 1.2 if is_crouching else 1.8
-	var target_pos_y: float = target_height / 2.0 # Keep origin at center of the new capsule
 	
-	if is_instance_valid(core_capsule_collision):
-		core_capsule_collision.shape.height = target_height
-		core_capsule_collision.position.y = target_pos_y
+	# THE DEFINITIVE COLLISION NODE SWITCH:
+	# Toggling pre-compiled nodes whose centers are identically aligned (Y: 0.0)
+	# completely eliminates the frame-1 position shifts that cause floor-falling bugs!
+	if is_instance_valid(collision_standing) and is_instance_valid(collision_sliding):
+		collision_standing.disabled = crouching
+		collision_sliding.disabled = not crouching
 		
-	if is_instance_valid(player_mesh):
-		if player_mesh.mesh is CapsuleMesh:
-			player_mesh.mesh.height = target_height
-		player_mesh.position.y = target_pos_y
+	# Smoothly scale her 3D visual mesh model so she looks low-profile
+	var target_height: float = 0.9 if crouching else 1.8
+	var target_pos_y: float = 0.0 # Origin stays locked on the ground level!
 	
-	# After resizing, force a micro-adjustment if we are on the floor 
-	# to prevent clipping or floating.
-	if is_on_floor():
-		# Move up slightly to prevent sinking into geometry during crouch
-		global_position.y += 0.05
+	if is_instance_valid(player_mesh) and player_mesh.mesh is CapsuleMesh:
+		player_mesh.mesh.height = target_height
+		player_mesh.position.y = target_pos_y
+		
+
 
 func process_standard_movement(target_direction: Vector3, delta: float) -> void:
 	if is_on_wall(): target_direction = target_direction.slide(get_wall_normal()).normalized()
@@ -536,11 +563,17 @@ func _on_melee_hit_registered(collider: Node) -> void:
 			collider.take_damage(1)
 
 func initiate_dodge_roll(target_direction: Vector3) -> void:
+	# If she is currently sliding on her shield, close down the slide state 
+	# and recall her shield board back to her shoulder BEFORE processing the roll
+	if current_locomotion_mode == LocomotionState.SLIDING:
+		exit_viking_slide_state()
+		print("TACTICAL FLOW: Shield slide canceled directly into an agile roll!")
+
 	is_rolling = true
 	can_dodge = false
 	roll_timer = dodge_duration
 	
-	# Force stand up if dodging
+	# Force stand up if crouching
 	if is_crouching:
 		update_player_size(false)
 		
@@ -662,9 +695,7 @@ func execute_unified_gadget_fire() -> void:
 			# Spawn with a forward offset so it doesn't collide with the player
 			bola_instance.position = global_position + Vector3(0.0, 0.8, 0.0) + (target_facing_vector * 0.6)
 			
-			# ADD THIS LINE: This tells the Bola to ignore your player capsule
-			bola_instance.add_collision_exception_with(self)
-			
+	
 			get_parent().add_child(bola_instance)
 			
 			if bola_instance.has_method("initialize_bola_flight"):
@@ -699,10 +730,20 @@ func _input(event: InputEvent) -> void:
 			current_locomotion_mode = LocomotionState.SPRINTING
 	
 	if event.is_action_pressed("stealth_crouch"):
+		if event.is_echo(): return
+		
 		if not is_rolling and not is_attacking and not is_climbing:
-			# If sprinting, trigger the slide, else just toggle crouch
-			if current_locomotion_mode == LocomotionState.SPRINTING:
+			# DYNAMIC SLIDE CANCEL INTERCEPT: 
+			# If they tap crouch a SECOND time while sliding, execute an instant manual cancel
+			if current_locomotion_mode == LocomotionState.SLIDING:
+				exit_viking_slide_state()
+				return # Break early to avoid double size triggers
+				
+			# SPRINT TRIGGER BRANCH: If running, enter slide mode
+			elif current_locomotion_mode == LocomotionState.SPRINTING:
 				enter_viking_slide_state()
+				
+			# IDLE TRAVERSAL BRANCH: Standard crouch toggle
 			else:
 				toggle_crouch_state()
 	
@@ -778,6 +819,7 @@ func _input(event: InputEvent) -> void:
 		if is_actively_aiming_gadget:
 			is_actively_aiming_gadget = false
 			execute_unified_gadget_fire()
+			
 			is_bola_on_fire_cooldown = true
 			get_tree().create_timer(0.25).timeout.connect(func(): is_bola_on_fire_cooldown = false)
 
@@ -923,27 +965,59 @@ func _on_cascade_sensor_body_entered(body: Node) -> void:
 			body.execute_cascade_stumble_fall()
 
 func enter_viking_slide_state() -> void:
-	if current_locomotion_mode == LocomotionState.SLIDING: return 
+	if current_locomotion_mode == LocomotionState.SLIDING: return
 	
 	current_locomotion_mode = LocomotionState.SLIDING
-	slide_duration_timer = 1.2
+	slide_duration_timer = 1.2 # Baseline slide length limit threshold
 	
-	# Use current velocity or forward vector
+	# Blast her forward with your established slide impulse velocity parameters
 	var slide_dir: Vector3 = -global_transform.basis.z.normalized()
 	if velocity.length_squared() > 0.1:
 		slide_dir = velocity.normalized()
-	
 	velocity.x = slide_dir.x * slide_impulse_velocity
 	velocity.z = slide_dir.z * slide_impulse_velocity
 	
-	update_player_size(true) # Crouch
-	spawn_footstep_dust_cloud(true)
-	print("LOCOMOTION: Eira enters Shield-Surf.")
+	# Position the physical shield mesh flat under her soles BEFORE toggling shapes
+	if is_instance_valid(shield_skate_rig):
+		var active_tween = get_tree().create_tween().set_parallel(true)
+		# Lowering the shield mesh to match her -0.45 local ground center!
+		active_tween.tween_property(shield_skate_rig, "position", Vector3(0.0, -0.45, 0.0), 0.1).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		active_tween.tween_property(shield_skate_rig, "rotation_degrees", Vector3(0.0, 0.0, 0.0), 0.1)
+		
+	# Toggle shape nodes and visual mesh sizes safely
+	update_player_size(true)
+	
+	# --- THE COMPENSATOR GATEWAYS ---
+	# Offsets the difference between the 0.0 standing origin and your -0.45 sliding center.
+	# This completely stops the physics engine from launching her capsule into the sky!
+	if is_on_floor():
+		global_position.y -= 0.45
+		
+	if has_method("spawn_footstep_dust_cloud"):
+		spawn_footstep_dust_cloud(true)
+		
+	print("LOCOMOTION: Shield dropped to surf stance! Ground origin locked.")
 
 func exit_viking_slide_state() -> void:
-	current_locomotion_mode = LocomotionState.STANDARD
-	update_player_size(false) # Stand up
+	if current_locomotion_mode != LocomotionState.SLIDING: return
 	
-	if is_instance_valid(camera): 
-		var tween = create_tween()
-		tween.tween_property(camera, "rotation:z", 0.0, 0.2)
+	current_locomotion_mode = LocomotionState.STANDARD
+	slide_duration_timer = 0.0
+	
+	# Instantly snap her shield board right back onto her shoulder visual socket
+	if is_instance_valid(shield_skate_rig):
+		var active_tween = get_tree().create_tween().set_parallel(true)
+		active_tween.tween_property(shield_skate_rig, "position", Vector3(-0.4, 0.2, 0.2), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		active_tween.tween_property(shield_skate_rig, "rotation_degrees", Vector3(0.0, 0.0, 90.0), 0.12)
+		
+	# Restore normal standing 1.8m capsule shape nodes
+	update_player_size(false)
+	
+	# Symmetrically push her world coordinates up to balance the center mass shift
+	if is_on_floor():
+		global_position.y += 0.45
+		
+	if is_instance_valid(camera):
+		camera.rotation.z = lerp_angle(camera.rotation.z, 0.0, 12.0 * get_process_delta_time())
+		
+	print("LOCOMOTION: Slide concluded. Posture profiles synchronized.")

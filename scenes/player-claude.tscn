@@ -1,0 +1,97 @@
+[gd_scene format=3 uid="uid://fkpekyoad03c"]
+
+[ext_resource type="Script" uid="uid://8aoc4ioyltcr" path="res://scripts/player.gd" id="1_qhqgy"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tuyoq"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_fjrip"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_smehm"]
+size = Vector3(2.5, 1.5, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a8y0u"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.015686275, 1, 0.96862745, 0.5019608)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ur7pv"]
+material = SubResource("StandardMaterial3D_a8y0u")
+size = Vector3(0.05, 0.02, 8)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_shieldgrain"]
+frequency = 0.15
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_shieldgrain"]
+noise = SubResource("FastNoiseLite_shieldgrain")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_shieldwood"]
+albedo_color = Color(0.545098, 0.352941, 0.168627, 1)
+albedo_texture = SubResource("NoiseTexture2D_shieldgrain")
+roughness = 0.85
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_shieldface"]
+material = SubResource("StandardMaterial3D_shieldwood")
+top_radius = 0.4
+bottom_radius = 0.45
+height = 0.09
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_shieldmetal"]
+albedo_color = Color(0.54902, 0.54902, 0.54902, 1)
+metallic = 0.7
+roughness = 0.3
+
+[sub_resource type="TorusMesh" id="TorusMesh_shieldrim"]
+material = SubResource("StandardMaterial3D_shieldmetal")
+inner_radius = 0.42
+outer_radius = 0.47
+rings = 24
+
+[sub_resource type="SphereMesh" id="SphereMesh_shieldboss"]
+material = SubResource("StandardMaterial3D_shieldmetal")
+radius = 0.12
+height = 0.24
+
+[node name="Player" type="CharacterBody3D" unique_id=1939885779]
+script = ExtResource("1_qhqgy")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1405332677]
+shape = SubResource("CapsuleShape3D_tuyoq")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1434567057]
+mesh = SubResource("CapsuleMesh_fjrip")
+
+[node name="Melee_Hitbox" type="Area3D" parent="." unique_id=1393367289]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.8)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Melee_Hitbox" unique_id=914228323]
+shape = SubResource("BoxShape3D_smehm")
+
+[node name="Aim_Line_Pointer" type="Node3D" parent="." unique_id=1363663862]
+
+[node name="Line_Visual" type="MeshInstance3D" parent="Aim_Line_Pointer" unique_id=155258009]
+physics_interpolation_mode = 1
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+mesh = SubResource("BoxMesh_ur7pv")
+
+[node name="GroundSnapper" type="RayCast3D" parent="." unique_id=1185239822]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+target_position = Vector3(0, -0.5, 0)
+
+[node name="VikingShieldRig" type="Node3D" parent="." unique_id=1095130356]
+transform = Transform3D(0, 1, 0, -1, 0, 0, 0, 0, 1, 0.42, 1.05, 0.05)
+
+[node name="ShieldFace" type="MeshInstance3D" parent="VikingShieldRig" unique_id=102956352]
+mesh = SubResource("CylinderMesh_shieldface")
+
+[node name="ShieldRim" type="MeshInstance3D" parent="VikingShieldRig" unique_id=1766480431]
+mesh = SubResource("TorusMesh_shieldrim")
+
+[node name="ShieldBoss" type="MeshInstance3D" parent="VikingShieldRig" unique_id=382897722]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+mesh = SubResource("SphereMesh_shieldboss")
+
+[node name="ShieldCarryPose" type="Node3D" parent="." unique_id=1989971578]
+transform = Transform3D(0, 1, 0, -1, 0, 0, 0, 0, 1, 0.42, 1.05, 0.05)
+
+[node name="ShieldSurfPose" type="Node3D" parent="." unique_id=991652021]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.12, 0.15)

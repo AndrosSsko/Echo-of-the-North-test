@@ -5,6 +5,11 @@
 [ext_resource type="PackedScene" uid="uid://dh5aebcyk3trv" path="res://scenes/takedown_fx_cloud.tscn" id="3_qlg0r"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tuyoq"]
+height = 1.8
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_5wce4"]
+radius = 0.45
+height = 0.9
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_fjrip"]
 
@@ -20,13 +25,23 @@ albedo_color = Color(0.015686275, 1, 0.96862745, 0.5019608)
 material = SubResource("StandardMaterial3D_a8y0u")
 size = Vector3(0.05, 0.02, 8)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jfnov"]
+albedo_color = Color(0.3372549, 0.19607843, 0.19607843, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_5wce4"]
+material = SubResource("StandardMaterial3D_jfnov")
+
 [node name="Player" type="CharacterBody3D" unique_id=1939885779]
 script = ExtResource("1_qhqgy")
 pebble_blueprint = ExtResource("2_dqkch")
 dust_blueprint = ExtResource("3_qlg0r")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1405332677]
+[node name="Collision_Standing" type="CollisionShape3D" parent="." unique_id=1405332677]
 shape = SubResource("CapsuleShape3D_tuyoq")
+
+[node name="Collision_Sliding" type="CollisionShape3D" parent="." unique_id=24694013]
+shape = SubResource("CapsuleShape3D_5wce4")
+disabled = true
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1434567057]
 mesh = SubResource("CapsuleMesh_fjrip")
@@ -47,3 +62,10 @@ mesh = SubResource("BoxMesh_ur7pv")
 [node name="GroundSnapper" type="RayCast3D" parent="." unique_id=1185239822]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
 target_position = Vector3(0, -0.5, 0)
+
+[node name="Shield_Skate_Rig" type="Node3D" parent="." unique_id=1782625851]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, -0.4, 1.1, 0.2)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shield_Skate_Rig" unique_id=532821808]
+transform = Transform3D(1.2, 0, 0, 0, 0.1, 0, 0, 0, 1.2, 0, 0, 0)
+mesh = SubResource("CylinderMesh_5wce4")
