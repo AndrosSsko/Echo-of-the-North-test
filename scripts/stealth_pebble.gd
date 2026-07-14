@@ -9,7 +9,7 @@ func _ready() -> void:
 func _on_impact_registered(body: Node) -> void:
 	# 1. THE SAFETY GUARD: Move this to the ABSOLUTE top of the function!
 	# If the pebble clips Eira or Smudge on spawn, discard it instantly and exit.
-	if body.name == "Player" or body.name == "Smudge": 
+	if body.name == "Player" or body.name == "Smudge" or body.is_in_group("PlayerGroup"): 
 		return
 		
 	print("PEBBLE IMPACT: Clattered against ", body.name, "! Broadcasting sound wave...")

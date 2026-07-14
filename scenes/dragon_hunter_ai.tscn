@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bcjpsy1rbe8v6" path="res://scripts/dragon_hunter_ai.gd" id="1_homin"]
 [ext_resource type="PackedScene" uid="uid://b2y7debdhpia8" path="res://scenes/dropped_sword_physics.tscn" id="2_20pit"]
+[ext_resource type="Script" uid="uid://c2ab0erd7uks2" path="res://scripts/vfx/dizzy_stars_halo_motor.gd" id="3_20pit"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_p0nv6"]
 radius = 0.6
@@ -100,3 +101,6 @@ outline_modulate = Color(1, 1, 1, 1)
 material_override = SubResource("StandardMaterial3D_homin")
 cast_shadow = 0
 mesh = SubResource("ImmediateMesh_5kn0f")
+
+[node name="DizzyStarsHaloMotor" type="Node3D" parent="." unique_id=389203999]
+script = ExtResource("3_20pit")

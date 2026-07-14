@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://bd0jch4old4ek"]
+[gd_scene format=3 uid="uid://bd0jch4old4ek"]
 
 [ext_resource type="Script" uid="uid://cilodk0daeq8v" path="res://scripts/acoustic_ripple.gd" id="1_fg2uk"]
 
@@ -11,6 +11,6 @@ albedo_color = Color(0.3137255, 0.78431374, 0.47058824, 1)
 material = SubResource("StandardMaterial3D_2nl8x")
 inner_radius = 0.95
 
-[node name="Acoustic_Ripple" type="MeshInstance3D"]
+[node name="Acoustic_Ripple" type="MeshInstance3D" unique_id=1951459300]
 mesh = SubResource("TorusMesh_fg2uk")
 script = ExtResource("1_fg2uk")

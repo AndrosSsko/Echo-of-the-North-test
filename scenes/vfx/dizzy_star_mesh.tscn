@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://bdrgc2lfw5nj3"]
+
+[sub_resource type="ORMMaterial3D" id="ORMMaterial3D_jfnov"]
+shading_mode = 0
+albedo_color = Color(1, 0.8, 0, 1)
+
+[sub_resource type="PrismMesh" id="PrismMesh_5wce4"]
+material = SubResource("ORMMaterial3D_jfnov")
+size = Vector3(0.18, 0.18, 0.08)
+
+[node name="DizzyStarMesh" type="Node3D" unique_id=192354858]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1364577970]
+mesh = SubResource("PrismMesh_5wce4")
+
+[node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1393515971]
+light_color = Color(1.0842435, 0.86827326, 0.63959885, 1)
+light_energy = 0.5

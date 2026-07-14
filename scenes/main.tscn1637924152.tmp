@@ -1,0 +1,490 @@
+[gd_scene format=3 uid="uid://bhb7ekr3go1ci"]
+
+[ext_resource type="Script" uid="uid://dhji641jfpw0" path="res://scripts/breakable_wall.gd" id="2_jbj1t"]
+[ext_resource type="Script" uid="uid://b1v8te31huvmh" path="res://scripts/breakable_barricade.gd" id="3_tefeu"]
+[ext_resource type="Script" uid="uid://dskaq3j03rt4q" path="res://scripts/interactable_object.gd" id="4_jyhfs"]
+[ext_resource type="Script" uid="uid://s5l54qrtjrdm" path="res://scripts/dialogue_box_ui.gd" id="4_muem4"]
+[ext_resource type="Texture2D" uid="uid://ynclmn1e4lbo" path="res://icons/health-normal.png" id="4_ya4ey"]
+[ext_resource type="Texture2D" uid="uid://vrilbffhs5xo" path="res://icons/bolas.png" id="5_eb6dy"]
+[ext_resource type="Script" uid="uid://dlgg7vmsoir1i" path="res://scripts/companion_puzzle_anchor.gd" id="8_tipki"]
+[ext_resource type="Script" uid="uid://csxf5u0wym0s5" path="res://scripts/wind_draft_zone.gd" id="9_85g3d"]
+[ext_resource type="PackedScene" uid="uid://dh5aebcyk3trv" path="res://scenes/takedown_fx_cloud.tscn" id="9_gqmmt"]
+[ext_resource type="Script" uid="uid://cqw1xbe2senps" path="res://scripts/breakable_crate.gd" id="10_choun"]
+[ext_resource type="Script" uid="uid://carvix4ntonfs" path="res://scripts/climbable_zone.gd" id="11_ya4ey"]
+[ext_resource type="Script" uid="uid://bs3fhg6io8ed0" path="res://scripts/camera_sector_trigger.gd" id="14_a8y0u"]
+[ext_resource type="Script" uid="uid://cehepnuya372w" path="res://scripts/lore_chest_zone.gd" id="15_jkv2x"]
+[ext_resource type="Script" uid="uid://de75skjl78myx" path="res://scripts/locked_gate.gd" id="18_dp3eg"]
+[ext_resource type="PackedScene" uid="uid://cvfjqwnegqntm" path="res://scenes/dragon_hunter_ai.tscn" id="21_jscy8"]
+[ext_resource type="PackedScene" uid="uid://efgtfuq4af2o" path="res://scenes/camera_controller.tscn" id="21_yc10j"]
+[ext_resource type="PackedScene" uid="uid://bomwccufnbnta" path="res://scenes/breakable_pottery.tscn" id="22_jscy8"]
+[ext_resource type="PackedScene" uid="uid://q2m1j4ekemny" path="res://scenes/player.tscn" id="22_pm3ni"]
+[ext_resource type="PackedScene" uid="uid://csg2fsyyu7al5" path="res://scenes/camouflage_bush.tscn" id="22_y6deb"]
+[ext_resource type="PackedScene" uid="uid://dik7o6yt8r51n" path="res://scenes/reload_station.tscn" id="23_pm3ni"]
+[ext_resource type="PackedScene" uid="uid://c317j6aq4r7xs" path="res://scenes/smudge_companion.tscn" id="23_y6deb"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eb6dy"]
+albedo_color = Color(0.5764706, 0.5529412, 0.5137255, 1)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
+
+[sub_resource type="Sky" id="Sky_sugp2"]
+sky_material = SubResource("ProceduralSkyMaterial_0wfyh")
+
+[sub_resource type="Environment" id="Environment_jyhfs"]
+background_mode = 2
+sky = SubResource("Sky_sugp2")
+ambient_light_color = Color(0.16470589, 0.19607843, 0.23921569, 1)
+ambient_light_energy = 1.2
+ssao_enabled = true
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.04
+volumetric_fog_albedo = Color(0.47843137, 0.5411765, 0.61960787, 1)
+volumetric_fog_emission = Color(0.050980393, 0.07450981, 0.101960786, 1)
+volumetric_fog_anisotropy = 0.4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jyhfs"]
+bg_color = Color(0.101960786, 0.10980392, 0.11764706, 1)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_tbgi4"]
+radius = 2.5
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tefeu"]
+top_radius = 1.0
+bottom_radius = 1.0
+height = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_o6xl0"]
+albedo_color = Color(0.36078432, 0.2509804, 0.2, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_85g3d"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_choun"]
+top_radius = 0.4
+bottom_radius = 1.5
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_tipki"]
+size = Vector3(3, 2, 3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_85g3d"]
+albedo_color = Color(0.6784314, 0.84705883, 0.9019608, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_choun"]
+material = SubResource("StandardMaterial3D_85g3d")
+size = Vector3(3, 0.1, 3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ya4ey"]
+albedo_color = Color(0.52156866, 0.31764707, 0.25490198, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
+size = Vector3(0.8, 3, 5.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jkv2x"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jbj1t"]
+size = Vector3(3, 2, 3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_muem4"]
+albedo_color = Color(0.6509804, 0.5529412, 0.44705883, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_muem4"]
+size = Vector3(0.6, 3.6, 4.1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0ld40"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gqmmt"]
+albedo_color = Color(0.3683164, 0.2606575, 0.1395534, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yc10j"]
+material = SubResource("StandardMaterial3D_gqmmt")
+
+[node name="Main" type="Node3D" unique_id=1234247733]
+
+[node name="Norse_Testing_Arena" type="CSGCombiner3D" parent="." unique_id=224214456]
+use_collision = true
+
+[node name="Ground_Plane" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=470687821]
+size = Vector3(60, 1, 60)
+
+[node name="High_Platform" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=1215616398]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.641193, 2, -15)
+size = Vector3(12, 4, 12)
+
+[node name="Doorway_Cutter" type="CSGBox3D" parent="Norse_Testing_Arena/High_Platform" unique_id=1515262243]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+operation = 2
+size = Vector3(4, 5, 14)
+
+[node name="ramp" type="CSGPolygon3D" parent="Norse_Testing_Arena" unique_id=1274590663]
+transform = Transform3D(1, 0, 0, 0, 0.8420007, -0.5394764, 0, 0.5394764, 0.8420007, -24.3398, -0.6246201, -3.64073)
+depth = 7.0
+
+[node name="Cover_Wall_01" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=1375091420]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.641958, 1.25, 6.2905674)
+size = Vector3(14, 1.25, 1.5)
+
+[node name="Ruined_Pillar" type="CSGCylinder3D" parent="Norse_Testing_Arena" unique_id=56305223]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 3, -5)
+radius = 1.5
+height = 6.0
+
+[node name="Stealth_Wall_Left" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=2004696956]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.0419264, 2, -2.1098623)
+size = Vector3(2, 4, 15)
+
+[node name="Stealth_Wall_Right" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=250494813]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.8322353, 2, -5)
+size = Vector3(2, 4, 15)
+
+[node name="Climbing_Wall" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=141844908]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.5, 2, -5)
+size = Vector3(1.5, 4, 6)
+material = SubResource("StandardMaterial3D_eb6dy")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=93016612]
+transform = Transform3D(0.70710677, -0.1830127, 0.68301266, 0, 0.9659258, 0.25881904, -0.70710677, -0.1830127, 0.68301266, 0, 0, 0)
+light_color = Color(1, 0.827451, 0.60784316, 1)
+light_energy = 1.8
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=911767662]
+environment = SubResource("Environment_jyhfs")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1142743694]
+
+[node name="Prompt_Container" type="Control" parent="HUD" unique_id=724654339]
+layout_mode = 3
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -20.0
+offset_top = -40.0
+offset_right = 20.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Interaction_Prompt" type="Label" parent="HUD/Prompt_Container" unique_id=1280412320]
+visible = false
+layout_mode = 0
+offset_right = 400.0
+offset_bottom = 40.0
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Codex_Journal_UI" type="Panel" parent="HUD" unique_id=1300410897]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_jyhfs")
+
+[node name="Journal_Content" type="RichTextLabel" parent="HUD/Codex_Journal_UI" unique_id=452215493]
+custom_minimum_size = Vector2(600, 400)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -576.0
+offset_top = -324.0
+offset_right = 24.0
+offset_bottom = 76.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+bbcode_enabled = true
+text = "“Entry 1: Sparing Smudge. The tribe called me stubborn. They called me a traitor. But when I looked into the eyes of that small Veilstrider hatchling, I didn't see a monster... I just saw something terrified.”"
+
+[node name="Objective_Tracker" type="Label" parent="HUD" unique_id=1985735775]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 362.0
+offset_bottom = 43.0
+text = "Current Goal: Infiltrate the Outpost Corridor"
+
+[node name="Health_Container" type="HBoxContainer" parent="HUD" unique_id=537055358]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -132.0
+offset_top = 20.0
+offset_right = -28.0
+offset_bottom = 60.0
+grow_horizontal = 0
+
+[node name="Heart_01" type="TextureRect" parent="HUD/Health_Container" unique_id=251792115]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+texture = ExtResource("4_ya4ey")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Heart_02" type="TextureRect" parent="HUD/Health_Container" unique_id=1291843352]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+texture = ExtResource("4_ya4ey")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Heart_03" type="TextureRect" parent="HUD/Health_Container" unique_id=543636112]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+texture = ExtResource("4_ya4ey")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Dialogue_Box_UI" type="Panel" parent="HUD" unique_id=130408259]
+visible = false
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -128.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("4_muem4")
+
+[node name="Subtitle_Text" type="RichTextLabel" parent="HUD/Dialogue_Box_UI" unique_id=579751711]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+bbcode_enabled = true
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Typewriter_Snd_Player" type="AudioStreamPlayer" parent="HUD/Dialogue_Box_UI" unique_id=1894440308]
+
+[node name="Ammo_Container" type="HBoxContainer" parent="HUD" unique_id=732249276]
+offset_left = 1020.0
+offset_top = 60.0
+offset_right = 1060.0
+offset_bottom = 100.0
+
+[node name="TextureRect" type="TextureRect" parent="HUD/Ammo_Container" unique_id=387248337]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+texture = ExtResource("5_eb6dy")
+expand_mode = 1
+
+[node name="Ammo_Tracker" type="Label" parent="HUD/Ammo_Container" unique_id=52975069]
+layout_mode = 2
+
+[node name="Radial_Wheel_UI" type="Panel" parent="HUD" unique_id=1930911690]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -126.0
+offset_top = -124.0
+offset_right = 124.0
+offset_bottom = 126.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Selection_Title_Text" type="RichTextLabel" parent="HUD/Radial_Wheel_UI" unique_id=111437005]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+bbcode_enabled = true
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Campfire_Interaction_Zone" type="Area3D" parent="." unique_id=1544195569]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 5)
+script = ExtResource("4_jyhfs")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Campfire_Interaction_Zone" unique_id=1660351150]
+shape = SubResource("CylinderShape3D_tbgi4")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Campfire_Interaction_Zone" unique_id=1397670739]
+mesh = SubResource("CylinderMesh_tefeu")
+
+[node name="Patrol_Point_A" type="Node3D" parent="." unique_id=1970335076]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1.5, -12)
+
+[node name="Patrol_Point_B" type="Node3D" parent="." unique_id=317712708]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1.5, -2)
+
+[node name="Wooden_Barricade" type="CSGBox3D" parent="." unique_id=1260813859]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 2.3307076, 10.091627)
+material_override = SubResource("StandardMaterial3D_o6xl0")
+use_collision = true
+size = Vector3(4.2, 3.5, 1)
+script = ExtResource("3_tefeu")
+
+[node name="Respawn_Checkpoint" type="Node3D" parent="." unique_id=932690942]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 1.5, 5)
+
+[node name="Companion_Puzzle_Anchor" type="Area3D" parent="." unique_id=1120840663]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25, 5.5, -15)
+script = ExtResource("8_tipki")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Companion_Puzzle_Anchor" unique_id=1057426650]
+shape = SubResource("BoxShape3D_85g3d")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Companion_Puzzle_Anchor" unique_id=2016642228]
+mesh = SubResource("CylinderMesh_choun")
+
+[node name="Wind_Draft_Zone" type="Area3D" parent="." unique_id=844565724]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 1, -4)
+script = ExtResource("9_85g3d")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Wind_Draft_Zone" unique_id=698809416]
+shape = SubResource("BoxShape3D_tipki")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Wind_Draft_Zone" unique_id=608379384]
+mesh = SubResource("BoxMesh_choun")
+
+[node name="Supply_Crate" type="CSGBox3D" parent="." unique_id=513934672]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 1.75, -2)
+use_collision = true
+size = Vector3(1.5, 1.5, 1.5)
+material = SubResource("StandardMaterial3D_ya4ey")
+script = ExtResource("10_choun")
+
+[node name="Climbable_Interaction_Zone" type="Area3D" parent="." unique_id=2005793443]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.4, 1.5, -5)
+script = ExtResource("11_ya4ey")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Climbable_Interaction_Zone" unique_id=356290950]
+shape = SubResource("BoxShape3D_trceg")
+
+[node name="Patrol_Point_C" type="Node3D" parent="." unique_id=804381118]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 5.5, -11)
+
+[node name="Patrol_Point_D" type="Node3D" parent="." unique_id=1513674040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17, 5.5, -19)
+
+[node name="Camera_Sector_Trigger" type="Area3D" parent="." unique_id=1833489398]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.21712542, 0)
+script = ExtResource("14_a8y0u")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Camera_Sector_Trigger" unique_id=1759638406]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.1920929e-07, 0)
+shape = SubResource("BoxShape3D_jkv2x")
+
+[node name="Lore_Chest_Zone" type="Area3D" parent="." unique_id=1290529326]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 1, -10)
+script = ExtResource("15_jkv2x")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lore_Chest_Zone" unique_id=1326347244]
+shape = SubResource("BoxShape3D_jbj1t")
+
+[node name="Chest_Mesh" type="CSGBox3D" parent="Lore_Chest_Zone" unique_id=648552124]
+size = Vector3(1.6, 1, 1)
+material = SubResource("StandardMaterial3D_muem4")
+
+[node name="Breakable_Wall" type="Area3D" parent="." unique_id=1920233076]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1.75, -12)
+script = ExtResource("2_jbj1t")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Breakable_Wall" unique_id=1631327621]
+shape = SubResource("BoxShape3D_muem4")
+
+[node name="Wall_Mesh" type="CSGBox3D" parent="Breakable_Wall" unique_id=1215644239]
+size = Vector3(0.5, 3.5, 4)
+
+[node name="Locked_Gate" type="Area3D" parent="." unique_id=63013851]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.040429, 1.0458263, 8.76833)
+script = ExtResource("18_dp3eg")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Locked_Gate" unique_id=2126696312]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
+shape = SubResource("BoxShape3D_0ld40")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Locked_Gate" unique_id=1840134987]
+mesh = SubResource("BoxMesh_yc10j")
+
+[node name="Breakable_Pottery" parent="." unique_id=1555374705 instance=ExtResource("22_jscy8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.491457, 6.16199, -10.272797)
+shatter_vfx_blueprint = ExtResource("9_gqmmt")
+
+[node name="Reload_Station" parent="." unique_id=926489255 instance=ExtResource("23_pm3ni")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.999397, 0.9, 12.911265)
+
+[node name="Smudge" parent="." unique_id=1498981073 groups=["CompanionGroup"] instance=ExtResource("23_y6deb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8170989, 1.4328613, 1.3795352)
+target_player_path = NodePath("")
+
+[node name="Player" parent="." unique_id=948213586 node_paths=PackedStringArray("camera") instance=ExtResource("22_pm3ni")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4967864, 0)
+camera = NodePath("../Camera_Controller/Camera_Pivot/Camera3D")
+
+[node name="Camera_Controller" parent="." unique_id=1884499048 instance=ExtResource("21_yc10j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.303548, 4.121479)
+
+[node name="Camera_Pivot" parent="Camera_Controller" index="0" groups=["CameraPivotGroup"]]
+
+[node name="Camera3D" parent="Camera_Controller/Camera_Pivot" index="0"]
+transform = Transform3D(1, 0, 0, 0, 0.8660254, 0.5, 0, -0.5, 0.8660254, 0, 0, 0)
+
+[node name="Dragon_Hunter" parent="." unique_id=93691670 instance=ExtResource("21_jscy8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07382536, 2.0650978, -5.099059)
+vision_range = null
+vision_angle = null
+suspicion_build_speed = null
+suspicion_decay_speed = null
+ray_density_multiplier = null
+movement_speed = null
+investigation_speed = null
+acceleration = null
+turn_speed = null
+max_thump_posture = null
+dizzy_duration = null
+matches_to_award = null
+bola_ammo_to_award = null
+
+[node name="Dragon_Hunter2" parent="." unique_id=195832714 instance=ExtResource("21_jscy8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.904431, 1.5, -12.105534)
+vision_range = null
+vision_angle = null
+suspicion_build_speed = null
+suspicion_decay_speed = null
+ray_density_multiplier = null
+movement_speed = null
+investigation_speed = null
+acceleration = null
+turn_speed = null
+max_thump_posture = null
+dizzy_duration = null
+matches_to_award = null
+bola_ammo_to_award = null
+
+[node name="Camouflage_Bush" parent="." unique_id=677202986 instance=ExtResource("22_y6deb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0693829, 1.499999, -14.243728)
+
+[node name="Camouflage_Bush2" parent="." unique_id=697519587 instance=ExtResource("22_y6deb")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.525998, 1.5, -6.9813414)
+
+[node name="Dragon_Hunter3" parent="." unique_id=1700590246 instance=ExtResource("21_jscy8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18.4659, 1.7767031, 0)
+vision_range = null
+vision_angle = null
+suspicion_build_speed = null
+suspicion_decay_speed = null
+movement_speed = null
+investigation_speed = null
+acceleration = null
+turn_speed = null
+max_thump_posture = null
+dizzy_duration = null
+matches_to_award = null
+bola_ammo_to_award = null
+
+[editable path="Camera_Controller"]

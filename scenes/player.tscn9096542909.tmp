@@ -1,0 +1,176 @@
+[gd_scene format=3 uid="uid://q2m1j4ekemny"]
+
+[ext_resource type="Script" uid="uid://8aoc4ioyltcr" path="res://scripts/player.gd" id="1_qhqgy"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tuyoq"]
+height = 1.8
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_5wce4"]
+radius = 0.45
+height = 0.9
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_fjrip"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_udeac"]
+albedo_color = Color(0.476, 0.13985604, 0, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_mww8h"]
+material = SubResource("StandardMaterial3D_udeac")
+top_radius = 0.3
+bottom_radius = 0.3
+height = 0.2446289
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xg4pp"]
+albedo_color = Color(0.44291076, 0.44291076, 0.44291073, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_mww8h"]
+material = SubResource("StandardMaterial3D_xg4pp")
+radius = 0.4
+height = 0.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dqkch"]
+albedo_color = Color(0, 0, 0, 1)
+
+[sub_resource type="TorusMesh" id="TorusMesh_qhqgy"]
+material = SubResource("StandardMaterial3D_dqkch")
+inner_radius = 0.548
+outer_radius = 0.695
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mww8h"]
+albedo_color = Color(0, 0, 0, 1)
+
+[sub_resource type="TorusMesh" id="TorusMesh_dqkch"]
+material = SubResource("StandardMaterial3D_mww8h")
+inner_radius = 0.788
+outer_radius = 0.942
+
+[sub_resource type="TorusMesh" id="TorusMesh_jfnov"]
+material = SubResource("StandardMaterial3D_mww8h")
+inner_radius = 0.175
+outer_radius = 0.336
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_smehm"]
+size = Vector3(2.5, 1.5, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a8y0u"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.015686275, 1, 0.96862745, 0.5019608)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ur7pv"]
+material = SubResource("StandardMaterial3D_a8y0u")
+size = Vector3(0.05, 0.02, 8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qhqgy"]
+albedo_color = Color(0.3372549, 0.19607843, 0.19607843, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_5wce4"]
+material = SubResource("StandardMaterial3D_qhqgy")
+
+[node name="Player" type="CharacterBody3D" unique_id=1939885779]
+script = ExtResource("1_qhqgy")
+
+[node name="Collision_Standing" type="CollisionShape3D" parent="." unique_id=1405332677]
+shape = SubResource("CapsuleShape3D_tuyoq")
+
+[node name="Collision_Sliding" type="CollisionShape3D" parent="." unique_id=24694013]
+shape = SubResource("CapsuleShape3D_5wce4")
+disabled = true
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1434567057]
+mesh = SubResource("CapsuleMesh_fjrip")
+
+[node name="Hip_Ammo_Rig" type="Node3D" parent="MeshInstance3D" unique_id=1205081991]
+
+[node name="Bola_Mesh_01" type="Node3D" parent="MeshInstance3D/Hip_Ammo_Rig" unique_id=231086628]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.0034877658)
+
+[node name="Cord_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_01" unique_id=380448404]
+transform = Transform3D(-0.018333456, 0, 0.020190522, 0, 0.99999994, 0, -0.025934983, 0, -0.014272695, 0.1931033, -0.18457031, 0.54630524)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_01" unique_id=236123650]
+transform = Transform3D(-0.05772381, -0.17863524, 0.02492283, 0, 0.07447243, 0.089655265, -0.08165759, 0.12627739, -0.017617965, 0.18528892, -0.3207116, 0.543941)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Cord_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_01" unique_id=514116611]
+transform = Transform3D(-0.017227814, -0.19742708, 0.020190522, -0.010862782, 0.93969256, 4.392191e-17, -0.024370914, -0.27928546, -0.014272696, 0.21611188, -0.18913591, 0.5788537)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_01" unique_id=1525831785]
+transform = Transform3D(-0.05772381, -0.17863524, 0.02492283, 0, 0.07447243, 0.089655265, -0.08165759, 0.12627739, -0.017617965, 0.23437776, -0.31376815, 0.61338335)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Torus_Loop" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_01" unique_id=1903358899]
+transform = Transform3D(0.0053520133, 0.007043922, 0.012877131, 6.0072634e-05, -0.095083155, 0.0010911748, 0.013004979, -0.0024596117, -0.0053044395, 0.19354407, -0.082080975, 0.54735494)
+mesh = SubResource("TorusMesh_qhqgy")
+
+[node name="Bola_Mesh_02" type="Node3D" parent="MeshInstance3D/Hip_Ammo_Rig" unique_id=1350270685]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.0034877658)
+
+[node name="Cord_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_02" unique_id=1806634520]
+transform = Transform3D(-0.018333457, 0.33019412, 0.018466216, 0, 0.914598, -0.009998243, -0.025934983, -0.2334145, -0.0130537795, 0.14229202, -0.17761827, 0.5822238)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_02" unique_id=1475087298]
+transform = Transform3D(-0.05772381, -0.1387891, 0.05239801, 0, 0.15657158, 0.06965688, -0.08165759, 0.098110124, -0.03704019, 0.089874454, -0.30010444, 0.6113896)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Cord_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_02" unique_id=1923963266]
+transform = Transform3D(-0.020814639, 0.112853855, 0.018466212, -0.009935078, 0.8594409, -0.009998241, -0.02183538, -0.49862325, -0.013053779, 0.16379304, -0.18179396, 0.615838)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_02" unique_id=1114623563]
+transform = Transform3D(-0.05772381, -0.1387891, 0.05239801, 0, 0.15657158, 0.06965688, -0.08165759, 0.098110124, -0.03704019, 0.14125596, -0.29375398, 0.6792112)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Torus_Loop" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_02" unique_id=690306097]
+transform = Transform3D(-0.008117891, 0.031492412, 0.010432999, 0, 0.087230206, -0.005648785, -0.011483778, -0.022262013, -0.0073750936, 0.17653844, -0.08293983, 0.5554588)
+mesh = SubResource("TorusMesh_dqkch")
+
+[node name="Bola_Mesh_03" type="Node3D" parent="MeshInstance3D/Hip_Ammo_Rig" unique_id=1167805211]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.0034877658)
+
+[node name="Cord_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_03" unique_id=83735216]
+transform = Transform3D(-0.0052330885, -0.59491473, 0.019452313, -0.008551327, 0.7944571, 0.013460171, -0.030136831, -0.122123465, -0.0071971132, 0.26642996, -0.17649561, 0.55740446)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_A" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_03" unique_id=1255531195]
+transform = Transform3D(-0.016476657, -0.21640867, -0.029325645, -0.026924292, -0.059923477, 0.0878423, -0.094887316, 0.054581434, -0.01983301, 0.34241468, -0.28911906, 0.5693787)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Cord_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_03" unique_id=460048365]
+transform = Transform3D(0.0015449291, -0.6153903, 0.019452311, -0.016665628, 0.654459, 0.0134601705, -0.026992755, -0.4392922, -0.0071971077, 0.27571374, -0.1693908, 0.5957839)
+mesh = SubResource("CylinderMesh_mww8h")
+
+[node name="Weight_B" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_03" unique_id=1273947154]
+transform = Transform3D(-0.016476657, -0.21640867, -0.029325645, -0.026924292, -0.059923477, 0.0878423, -0.094887316, 0.054581434, -0.01983301, 0.3522959, -0.2607061, 0.64922374)
+mesh = SubResource("SphereMesh_mww8h")
+
+[node name="Torus_Loop" type="MeshInstance3D" parent="MeshInstance3D/Hip_Ammo_Rig/Bola_Mesh_03" unique_id=667758763]
+transform = Transform3D(-0.005437292, -0.116008356, 0.025961764, -0.008885009, 0.15491916, 0.017964432, -0.031312816, -0.02381411, -0.009605519, 0.2037284, -0.09613971, 0.54569495)
+mesh = SubResource("TorusMesh_jfnov")
+
+[node name="Melee_Hitbox" type="Area3D" parent="." unique_id=1393367289]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.8)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Melee_Hitbox" unique_id=914228323]
+shape = SubResource("BoxShape3D_smehm")
+
+[node name="Aim_Line_Pointer" type="Node3D" parent="." unique_id=1363663862]
+
+[node name="Line_Visual" type="MeshInstance3D" parent="Aim_Line_Pointer" unique_id=155258009]
+physics_interpolation_mode = 1
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+mesh = SubResource("BoxMesh_ur7pv")
+
+[node name="GroundSnapper" type="RayCast3D" parent="." unique_id=1185239822]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+target_position = Vector3(0, -0.5, 0)
+
+[node name="Shield_Skate_Rig" type="Node3D" parent="." unique_id=1782625851]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, -0.4, 1.1, 0.2)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shield_Skate_Rig" unique_id=532821808]
+transform = Transform3D(1.2, 0, 0, 0, 0.1, 0, 0, 0, 1.2, 0, 0, 0)
+mesh = SubResource("CylinderMesh_5wce4")

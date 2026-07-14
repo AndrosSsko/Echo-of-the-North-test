@@ -23,6 +23,11 @@ config/icon="res://icons/icon.svg"
 
 InputManager="*res://scripts/input_manager.gd"
 DialogueBox="*res://scenes/dialogue_box_ui.tscn"
+PhantomCameraManager="*uid://duq6jhf6unyis"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/phantom_camera/plugin.cfg")
 
 [input]
 

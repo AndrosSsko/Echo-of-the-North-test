@@ -1,5 +1,10 @@
 extends CharacterBody3D
 
+enum CompanionStealthState { IDLE_FOLLOW, POINT_SAFE, COWER_DANGER }
+var current_stealth_mood: CompanionStealthState = CompanionStealthState.IDLE_FOLLOW
+
+var tactical_scan_cooldown: float = 0.0
+
 # --- EMBERBOND CONFIGURATION MATRIX ---
 @export_category("Emberbond Tracking")
 @export var target_player_path: NodePath = "../Player"
@@ -28,6 +33,9 @@ func _ready() -> void:
 		
 
 func _physics_process(delta: float) -> void:
+	
+	process_takedown_safety_analyzer(delta)
+	
 	if not is_instance_valid(player_character):
 		var players = get_tree().get_nodes_in_group("PlayerGroup")
 		if players.size() > 0:
@@ -131,3 +139,100 @@ func deploy_wing_shadow_ability() -> void:
 
 func trigger_thermal_echo_vision() -> void:
 	print("COMMAND: Smudge lets out an echolocation click, illuminating hunter bones through the stone ruins!")
+	
+
+func process_takedown_safety_analyzer(delta: float) -> void:
+	# Throttle the scan tick rate to save CPU performance
+	tactical_scan_cooldown -= delta
+	if tactical_scan_cooldown > 0.0: return
+	tactical_scan_cooldown = 0.15 # Scan roughly 6 times a second
+
+	if not is_instance_valid(player_character): return
+	
+	# --- THE MASTER SCOPE FIX (GODOT 4.7+) ---
+	# Declaring the tracking variables at the top of the function ensures 
+	# they don't get trapped or erased inside inner indented 'if' blocks!
+	var all_enemies = []
+	var target_guard: Node3D = null
+
+	# # 1. CHECK IF EIRA IS ACTIVELY CROUCHING AND CLOSING IN ON A GUARD
+	if player_character.get("is_crouching"):
+		# REMOVED 'var' HERE: It safely assigns straight to our top-level variable!
+		all_enemies = get_tree().get_nodes_in_group("EnemyGroup")
+		for enemy in all_enemies:
+			if is_instance_valid(enemy) and "current_phase" in enemy:
+				if player_character.global_position.distance_to(enemy.global_position) <= 2.5:
+					if enemy.current_phase == enemy.PatrolPhase.MARCHING or enemy.current_phase == enemy.PatrolPhase.INVESTIGATING:
+						target_guard = enemy
+						break
+
+	# # 2. IF NO TAKEDOWN IS IMMINENT, REVERT TO STANDARD BEHAVIOR
+	if not is_instance_valid(target_guard):
+		if current_stealth_mood != CompanionStealthState.IDLE_FOLLOW:
+			current_stealth_mood = CompanionStealthState.IDLE_FOLLOW
+			reset_smudge_mesh_posture()
+		return
+
+	# # 3. SCAN SYSTEM: IS ANY OTHER GUARD WATCHING OUR TARGET?
+	var is_anybody_watching_him: bool = false
+	
+	# REMOVED 'var' HERE TOO: Reuses the top-level array container flawlessly!
+	all_enemies = get_tree().get_nodes_in_group("EnemyGroup")
+	for witness in all_enemies:
+		if is_instance_valid(witness) and witness != target_guard and "current_phase" in witness:
+			# Skip stun or dizzy guards since they can't raise alarms
+			if witness.current_phase == witness.PatrolPhase.STUNNED or witness.current_phase == witness.PatrolPhase.DIZZY:
+				continue
+				
+			# Check if the target guard falls inside this witness's vision cone metrics
+			var dist_to_target: float = witness.global_position.distance_to(target_guard.global_position)
+			if dist_to_target <= witness.vision_range:
+				var forward_vector: Vector3 = -witness.global_transform.basis.z.normalized()
+				var dir_to_target: Vector3 = target_guard.global_position - witness.global_position
+				var angle: float = rad_to_deg(forward_vector.angle_to(dir_to_target.normalized()))
+				
+				if angle <= witness.vision_angle:
+					# Dispatch an architectural obstruction raycast check
+					var space_state = get_world_3d().direct_space_state
+					var query = PhysicsRayQueryParameters3D.create(witness.global_position + Vector3(0, 0.5, 0), target_guard.global_position + Vector3(0, 0.5, 0))
+					query.exclude = [witness.get_rid(), self.get_rid()]
+					
+					var hit_data = space_state.intersect_ray(query)
+					if hit_data.is_empty() or hit_data["collider"] == target_guard:
+						is_anybody_watching_him = true
+						break
+
+	# 4. MUTATE SMUDGE'S COMPANION BODY POSTURE RESISTORS
+	if is_anybody_watching_him:
+		current_stealth_mood = CompanionStealthState.COWER_DANGER
+		execute_smudge_cower_animation(target_guard.global_position)
+	else:
+		current_stealth_mood = CompanionStealthState.POINT_SAFE
+		execute_smudge_point_animation(target_guard.global_position)
+
+func execute_smudge_point_animation(look_target: Vector3) -> void:
+	# SAFE POSTURE: Look directly at the guard, stretching his mesh forward elastically
+	var dir = (look_target - global_position).normalized()
+	if dir.length_squared() > 0.01:
+		rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.z), 12.0 * get_process_delta_time())
+	
+	# Procedural mesh stretching: make his model elongated and focused!
+	var mesh_node = get_node_or_null("MeshInstance3D")
+	if is_instance_valid(mesh_node):
+		mesh_node.scale = lerp(mesh_node.scale, Vector3(0.8, 1.2, 1.4), 10.0 * get_process_delta_time())
+
+func execute_smudge_cower_animation(look_target: Vector3) -> void:
+	# DANGER POSTURE: Comically spin backwards away from the danger zone and squash flat!
+	var dir = (look_target - global_position).normalized()
+	if dir.length_squared() > 0.01:
+		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), 12.0 * get_process_delta_time())
+	
+	# Procedural mesh squashing: pancake him into a round, terrified ball
+	var mesh_node = get_node_or_null("MeshInstance3D")
+	if is_instance_valid(mesh_node):
+		mesh_node.scale = lerp(mesh_node.scale, Vector3(1.5, 0.4, 1.5), 10.0 * get_process_delta_time())
+
+func reset_smudge_mesh_posture() -> void:
+	var mesh_node = get_node_or_null("MeshInstance3D")
+	if is_instance_valid(mesh_node):
+		mesh_node.scale = Vector3(1.0, 1.0, 1.0) # Snap back to normal scale profiles

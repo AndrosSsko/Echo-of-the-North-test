@@ -1,6 +1,6 @@
 extends CharacterBody3D
 
-enum PatrolPhase { MARCHING, INVESTIGATING, DIZZY, STUNNED, PANICKING, BOLA_STRUGGLE }
+enum PatrolPhase { MARCHING, INVESTIGATING, DIZZY, STUNNED, PANICKING, BOLA_STRUGGLE, SLIPPING }
 
 @export_category("Dynamic Field of View Constraints")
 @export var vision_range: float = 9.0       # Max forward viewing reach limit
@@ -40,6 +40,8 @@ var dropped_weapon_global_target_pos: Vector3 = Vector3.ZERO
 @onready var cascade_sensor_area: Area3D = $Impact_Cascade_Sensor
 @onready var point_a: Vector3 = $"../Patrol_Point_C".global_position if name == "Dragon_Hunter_High" else $"../Patrol_Point_A".global_position
 @onready var point_b: Vector3 = $"../Patrol_Point_D".global_position if name == "Dragon_Hunter_High" else $"../Patrol_Point_B".global_position
+@onready var equipped_weapon_mesh: Node3D = get_node_or_null("Skeleton3D/RightHandSlot/SwordMesh")
+@onready var dizzy_stars_halo: Node3D = $DizzyStarsHaloMotor
 
 @export_category("Lootable Rewards System")
 @export var matches_to_award: int = 1
@@ -67,6 +69,10 @@ var current_stability: int
 var is_currently_lootable: bool = false
 var has_already_been_looted: bool = false
 var bola_struggle_timer: float = 0.0
+var is_slipping_in_slime: bool = false
+var slime_scramble_timer: float = 0.0
+var weapon_dropped_this_slip: bool = false
+
 
 func _ready() -> void:
 	max_stability = randi_range(2, 5)
@@ -88,6 +94,39 @@ func _ready() -> void:
 			dynamic_cone_mesh_instance.material_override = vision_cone_material
 
 func _physics_process(delta: float) -> void:
+	
+	# === 1. COMPLETELY FREEZE PATROL ENGINE MOVEMENT MARKS ===
+	if current_phase == PatrolPhase.SLIPPING:
+		process_tactical_stealth_takedown_radar()
+		current_suspicion_value = 0.0
+		if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
+		if is_instance_valid(takedown_label_3d): takedown_label_3d.visible = false
+		
+		# --- STAGE 1: THE CARTOON SCRAMBLE LOCK ---
+		# Enforces the Looney Tunes on-the-spot running freeze!
+		if not weapon_dropped_this_slip:
+			velocity.x = 0.0
+			velocity.z = 0.0
+			velocity.y = -0.1
+			
+		# --- STAGE 2: THE FACE-PLANT GROUND CLAMP ---
+		# Forcefully pins him flat on his face to stop duplicate path drifting
+		else:
+			velocity.y = -4.0 
+			velocity.x = move_toward(velocity.x, 0.0, 16.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, 16.0 * delta)
+			
+		# Process environmental falling gravity weights naturally mid-dive
+		if not is_on_floor() and not weapon_dropped_this_slip:
+			var default_engine_gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
+			velocity.y -= default_engine_gravity * delta
+			
+		# FIXED INDENTATION: These two calls MUST sit INSIDE the slipping block!
+		move_and_slide()
+		return # Safely yields execution frame loops ONLY when actively slipping!
+
+	process_tactical_stealth_takedown_radar()
+	
 	# 1. PANICKING STATE MATRIX OVERRIDE
 	if current_phase == PatrolPhase.PANICKING:
 		current_suspicion_value = 0.0
@@ -105,7 +144,7 @@ func _physics_process(delta: float) -> void:
 		
 	# 4. INCAPACITATION GATES (STUNNED / DIZZY / BOLA_STRUGGLE)
 	# Cleanly unified all 3 immobilization states together into one safe processing channel!
-	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE:
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE or current_phase == PatrolPhase.SLIPPING:
 		current_suspicion_value = 0.0
 		velocity = Vector3.ZERO
 		if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
@@ -733,15 +772,23 @@ func check_for_fallen_allies() -> void:
 func construct_dynamic_clipping_vision_mesh() -> void:
 	if not is_instance_valid(dynamic_cone_mesh_instance): return
 	
+	# === THE UNCONSCIOUS BLINDFOLD SHUTTER ===
+	# If the guard is knocked out cold, stunned, dizzy, or tied up in a bola, 
+	# instantly clear his vision mesh surfaces and exit the function early!
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE or current_phase == PatrolPhase.SLIPPING:
+		if dynamic_cone_mesh_instance.mesh:
+			(dynamic_cone_mesh_instance.mesh as ImmediateMesh).clear_surfaces()
+		return
+		
 	# Fetch the pre-allocated immediate mesh resource container from the node property slot
 	var immediate_mesh: ImmediateMesh = dynamic_cone_mesh_instance.mesh as ImmediateMesh
 	if not immediate_mesh: return
 	
-	# GODOT 4.7 CLEANUP: Always clear old surface memory layers completely before re-allocating!
+	
 	immediate_mesh.clear_surfaces()
 	
 	var space_state = get_world_3d().direct_space_state
-	var eye_origin: Vector3 = global_position + Vector3(0.0, 0.1, 0.0) # Hover just slightly off the floor tiles
+	var eye_origin: Vector3 = global_position + Vector3(0.0, 0.1, 0.0)
 	
 	var perimeter_vertex_points: Array[Vector3] = []
 	var angle_increment_step: float = (vision_angle * 2.0) / ray_density_multiplier
@@ -789,6 +836,7 @@ func construct_dynamic_clipping_vision_mesh() -> void:
 	immediate_mesh.surface_end()
 	dynamic_cone_mesh_instance.mesh = immediate_mesh
 
+
 func clear_procedural_vision_mesh() -> void:
 	if is_instance_valid(dynamic_cone_mesh_instance):
 		dynamic_cone_mesh_instance.mesh = null
@@ -829,3 +877,186 @@ func process_bola_entanglement_struggle_loop(delta: float) -> void:
 		if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
 			alert_label.text = "🚨 INTRUDER ALERT!! 🚨"
 			alert_label.modulate = Color("#ff3333")
+
+
+func process_tactical_stealth_takedown_radar() -> void:
+	if not is_instance_valid(player_ref) or not is_instance_valid(takedown_label_3d): return
+	
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE:
+		takedown_label_3d.visible = false
+		return
+
+	var player_is_sneaking: bool = player_ref.get("is_crouching") if "is_crouching" in player_ref else false
+	
+	# THE DEFINITIVE VISIBILITY SHUTTER: If Eira is standing upright, KILL THE LABEL INSTANTLY!
+	if not player_is_sneaking:
+		takedown_label_3d.visible = false
+		return
+
+	var distance_to_player: float = global_position.distance_to(player_ref.global_position)
+	
+	# --- PHASE 1: CHECK PROXIMITY STEALTH FOOTPRINT ---
+	if distance_to_player <= 2.3:
+		var guard_forward: Vector3 = -global_transform.basis.z.normalized()
+		var direction_to_player: Vector3 = (player_ref.global_position - global_position).normalized()
+		var angle_dot: float = guard_forward.dot(direction_to_player)
+		
+		if angle_dot < 0.35 and (current_phase == PatrolPhase.MARCHING or current_phase == PatrolPhase.INVESTIGATING):
+			
+			# --- PHASE 2: MUTUAL WITNESS RADAR (SPIDER-MAN ENGINE) ---
+			var is_any_other_guard_watching_me: bool = false
+			var all_guards = get_tree().get_nodes_in_group("EnemyGroup")
+			
+			for witness in all_guards:
+				if is_instance_valid(witness) and witness != self and "current_phase" in witness:
+					if witness.current_phase == PatrolPhase.STUNNED or witness.current_phase == PatrolPhase.DIZZY or witness.current_phase == PatrolPhase.PANICKING:
+						continue
+						
+					var distance_to_me: float = witness.global_position.distance_to(global_position)
+					if distance_to_me <= witness.vision_range:
+						var witness_forward: Vector3 = -witness.global_transform.basis.z.normalized()
+						var dir_to_me: Vector3 = (global_position - witness.global_position).normalized()
+						var witness_angle: float = rad_to_deg(witness_forward.angle_to(dir_to_me))
+						
+						if witness_angle <= witness.vision_angle:
+							var space_state = get_world_3d().direct_space_state
+							var eye_level: Vector3 = witness.global_position + Vector3(0.0, 0.5, 0.0)
+							var target_level: Vector3 = global_position + Vector3(0.0, 0.5, 0.0)
+							var query = PhysicsRayQueryParameters3D.create(eye_level, target_level)
+							query.exclude = [witness.get_rid(), self.get_rid()]
+							
+							var ray_hit = space_state.intersect_ray(query)
+							if ray_hit.is_empty() or ray_hit["collider"] == self:
+								is_any_other_guard_watching_me = true
+								break
+								
+			# --- PHASE 3: DISTRIBUTE STATE COMMANDS ---
+			takedown_label_3d.visible = true
+			
+			var connected_pads = Input.get_connected_joypads()
+			var is_gamepad: bool = connected_pads.size() > 0 and Input.is_joy_known(connected_pads)
+			var attack_prompt: String = "🔵 [Button East]" if is_gamepad else "[X]"
+			
+			var smudge_node = get_tree().get_first_node_in_group("CompanionGroup")
+			
+			if is_any_other_guard_watching_me:
+				takedown_label_3d.text = attack_prompt + " 🚨 DANGER: WATCHED! 🚨"
+				takedown_label_3d.modulate = Color("#ff3333")
+				if is_instance_valid(smudge_node) and smudge_node.has_method("execute_smudge_cower_animation"):
+					smudge_node.execute_smudge_cower_animation(global_position)
+			else:
+				takedown_label_3d.text = attack_prompt + " Stealth Takedown [SAFE]"
+				takedown_label_3d.modulate = Color("#33ccff")
+				if is_instance_valid(smudge_node) and smudge_node.has_method("execute_smudge_point_animation"):
+					smudge_node.execute_smudge_point_animation(global_position)
+			return
+
+	takedown_label_3d.visible = false
+
+func execute_cascade_stumble_fall() -> void:
+	# Safety Gate: Prevent double-tripping if he clips multiple puddle boundaries simultaneously
+	if current_phase == PatrolPhase.SLIPPING or current_phase == PatrolPhase.STUNNED: 
+		return
+		
+	current_phase = PatrolPhase.SLIPPING
+	is_slipping_in_slime = true
+	weapon_dropped_this_slip = false
+	
+	# === STAGE 1: THE CARTOON ON-THE-SPOT SCRAMBLE ===
+	velocity = Vector3.ZERO
+	global_transform.basis = global_transform.basis.orthonormalized()
+	
+	print("SLIME HAZARD: Guard lost his footing! Running on the spot.")
+	
+	# Pop your high-utility spring dialogue text bubble overhead automatically!
+	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+		alert_label.text = "ð  µ WHOA! TOO SLIPPERY!! ð  µ"
+		alert_anchor.visible = true
+		alert_label.visible = true
+		alert_label.modulate.a = 1.0
+		alert_label.modulate = Color("#33ccff") # Neon cyan theme
+		alert_bubble_spring_scale = 1.0
+		alert_bubble_spring_velocity = 14.0 # Heavy spring pop kick-start impulse
+		alert_bubble_display_timer = 2.0
+		
+	if is_instance_valid(thump_label_3d):
+		thump_label_3d.visible = true
+		thump_label_3d.text = "🔄 SCRAMBLING! 🔄"
+		thump_label_3d.modulate = Color("#33ccff")
+		
+	# Frantic run on the spot for exactly 1.4 seconds before sliding down
+	get_tree().create_timer(1.4).timeout.connect(func():
+		_execute_slime_forward_launch_slide()
+	)
+		
+
+func _execute_slime_forward_launch_slide() -> void:
+	if current_phase != PatrolPhase.SLIPPING: return
+	print("SLIME HAZARD: Scramble concluded. Launching guard forward into flat face-plant dive.")
+	
+	weapon_dropped_this_slip = true
+	
+	# === STAGE 2: THE FORWARD CARTOON LAUNCH IMPULSE ===
+	var forward_heading_vector: Vector3 = -global_transform.basis.z.normalized()
+	velocity.x = forward_heading_vector.x * 12.0 # Launch forward a meter or two!
+	velocity.z = forward_heading_vector.z * 12.0
+	velocity.y = 0.0 # Keep him flat along the ground floor
+
+	
+	# === STAGE 3: THE DISARMING LOSS ===
+	if has_method("execute_disarm_parry_drop"):
+		execute_disarm_parry_drop()
+		if is_instance_valid(alert_label):
+			alert_label.text = "😱 NO! MY BLADE!! 😱"
+			alert_label.modulate = Color("#ff3333")
+	
+	if is_instance_valid(thump_label_3d):
+		thump_label_3d.text = "💥 FACE-PLANT! 💥"
+		thump_label_3d.modulate = Color("#ff3333")
+		
+	if is_instance_valid(visual_mesh):
+		visual_mesh.rotation_degrees.x = -90.0
+		visual_mesh.position.y = -0.6
+		
+	# Trigger camera screen-shake impact thud
+	var active_cam = get_viewport().get_camera_3d()
+	if is_instance_valid(active_cam) and active_cam.has_method("get_pcam"):
+		var pcam = active_cam.get_pcam()
+		if pcam and "shake_noise" in pcam:
+			pcam.set_shake_frequency(15.0)
+			pcam.set_shake_amplitude(0.25)
+			get_tree().create_timer(0.3).timeout.connect(func(): pcam.set_shake_amplitude(0.0))
+
+	if is_instance_valid(dizzy_stars_halo) and dizzy_stars_halo.has_method("start_dizzy_halo_sequence"):
+		dizzy_stars_halo.start_dizzy_halo_sequence()
+		var fade_timer_tween = create_tween().set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+		fade_timer_tween.tween_interval(2.4)
+		fade_timer_tween.tween_property(dizzy_stars_halo, "scale", Vector3.ZERO, 0.6)
+		
+	# Hold them flat on the floor for 3 full seconds before recovery
+	get_tree().create_timer(3.0).timeout.connect(func():
+		_execute_slime_recovery_getup()
+	)
+
+func _execute_slime_recovery_getup() -> void:
+	if current_phase != PatrolPhase.SLIPPING: return
+	print("SLIME HAZARD: Stun window closed. Guard is standing back up completely unarmed.")
+	
+	if is_instance_valid(thump_label_3d): 
+		thump_label_3d.visible = false
+	if is_instance_valid(alert_label): 
+		alert_label.visible = false
+		alert_bubble_display_timer = 0.0
+		
+	# Smoothly pop his visible character model container back upright perfectly
+	if is_instance_valid(visual_mesh):
+		visual_mesh.rotation_degrees.x = 0.0
+		visual_mesh.position.y = 0.0 # FIXED: Reset local Y translation so he isn't floating or buried!
+
+	if is_instance_valid(dizzy_stars_halo) and dizzy_stars_halo.has_method("stop_dizzy_halo_sequence"):
+		dizzy_stars_halo.stop_dizzy_halo_sequence()
+	# Reset his locomotion state parameters entirely so he resumes normal patrolling
+	is_slipping_in_slime = false
+	weapon_dropped_this_slip = false # Clear tracking flag for his next encounter!
+	current_phase = PatrolPhase.MARCHING
+	current_target_destination = point_a
