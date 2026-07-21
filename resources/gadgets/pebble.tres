@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="GadgetResource" format=3 uid="uid://cpxft0560qsjk"]
+
+[ext_resource type="PackedScene" uid="uid://d1sh3jgeqmay0" path="res://scenes/gadgets/stealth_pebble.tscn" id="1_hhsxw"]
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="1_xws32"]
+
+[resource]
+script = ExtResource("1_xws32")
+display_name = "Pebble"
+projectile_scene_file = ExtResource("1_hhsxw")
+metadata/_custom_type_script = "uid://c5bx8wjc4b02m"

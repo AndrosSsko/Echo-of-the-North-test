@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="GadgetResource" format=3 uid="uid://tbkgj1kpqqbe"]
+
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="1_mnej5"]
+[ext_resource type="PackedScene" uid="uid://bjeeo26o8srod" path="res://scenes/gadgets/active_tripwire_trap.tscn" id="1_vjsyg"]
+
+[resource]
+script = ExtResource("1_mnej5")
+display_name = "Tripwire Trap"
+type = 1
+project_parabolic_lob_arc = false
+projectile_scene_file = ExtResource("1_vjsyg")
+metadata/_custom_type_script = "uid://c5bx8wjc4b02m"

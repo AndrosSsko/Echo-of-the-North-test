@@ -1,13 +1,27 @@
 [gd_scene format=4 uid="uid://q2m1j4ekemny"]
 
 [ext_resource type="Script" uid="uid://8aoc4ioyltcr" path="res://scripts/player.gd" id="1_qhqgy"]
+[ext_resource type="Resource" uid="uid://cpxft0560qsjk" path="res://resources/gadgets/pebble.tres" id="2_d2wvv"]
 [ext_resource type="AudioStream" uid="uid://v87iesbwy8hp" path="res://sounds/freesound_community-skateboarding-indoors-102987.mp3" id="2_g2els"]
-[ext_resource type="PackedScene" uid="uid://d1sh3jgeqmay0" path="res://scenes/stealth_pebble.tscn" id="2_ur7pv"]
-[ext_resource type="PackedScene" uid="uid://dh5aebcyk3trv" path="res://scenes/takedown_fx_cloud.tscn" id="3_smehm"]
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="2_jej6c"]
+[ext_resource type="PackedScene" uid="uid://d1sh3jgeqmay0" path="res://scenes/gadgets/stealth_pebble.tscn" id="2_ur7pv"]
+[ext_resource type="Resource" uid="uid://c84pypi55r2yg" path="res://resources/gadgets/bola.tres" id="3_3v2ag"]
+[ext_resource type="Resource" uid="uid://tbkgj1kpqqbe" path="res://resources/gadgets/tripwire.tres" id="4_i4ail"]
+[ext_resource type="Resource" uid="uid://dn88gyp751pi8" path="res://resources/gadgets/dragon_slime.tres" id="4_jej6c"]
+[ext_resource type="Resource" uid="uid://b216dgue0axpe" path="res://resources/gadgets/spine_bomb.tres" id="6_qfm1y"]
 [ext_resource type="Script" uid="uid://bd046eokvcnu2" path="res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd" id="6_y4r1p"]
 [ext_resource type="Script" uid="uid://csjccrhj5wnx7" path="res://addons/phantom_camera/scripts/phantom_camera/phantom_camera_3d.gd" id="7_d2wvv"]
 [ext_resource type="Script" uid="uid://8umksf8e80fw" path="res://addons/phantom_camera/scripts/resources/tween_resource.gd" id="8_3v2ag"]
+[ext_resource type="PackedScene" uid="uid://bq52h4awfe2vr" path="res://scenes/footstep_dust.tscn" id="8_4r5pv"]
+[ext_resource type="Resource" uid="uid://cw5uou1kgbaqh" path="res://resources/gadgets/launcher.tres" id="8_a38lo"]
 [ext_resource type="Resource" uid="uid://dli0b1uy1y1bo" path="res://player_camera_resource.tres" id="9_ur7pv"]
+[ext_resource type="PackedScene" uid="uid://bn70fgh7iprws" path="res://scenes/vfx/aim_indicators.tscn" id="12_3v2ag"]
+[ext_resource type="Script" uid="uid://d0txjgdbmwu6l" path="res://scripts/components/inventory_gadget_manager.gd" id="14_f1ej7"]
+[ext_resource type="Script" uid="uid://df5tn4jy6lwp6" path="res://scripts/ProjectileLauncher.gd" id="15_a8ls1"]
+[ext_resource type="Script" uid="uid://ec5obx2bnvtg" path="res://scripts/AimController.gd" id="15_fulsm"]
+[ext_resource type="Script" uid="uid://b5gxk3ijghml3" path="res://scripts/IndicatorController.gd" id="16_4r5pv"]
+[ext_resource type="Script" uid="uid://q310pj0icq6o" path="res://scripts/LobPredictor.gd" id="16_qfm1y"]
+[ext_resource type="Script" uid="uid://dop8ry6reypqq" path="res://scripts/trap_placement_system.gd" id="22_a38lo"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_jfnov"]
 radius = 0.4
@@ -209,14 +223,6 @@ albedo_color = Color(0.7252391, 0.0005577391, 0.04429689, 1)
 [sub_resource type="SphereMesh" id="SphereMesh_5wce4"]
 material = SubResource("StandardMaterial3D_jfnov")
 
-[sub_resource type="ORMMaterial3D" id="ORMMaterial3D_5wce4"]
-shading_mode = 0
-albedo_color = Color(0.2, 0.8, 1, 1)
-
-[sub_resource type="BoxMesh" id="BoxMesh_ur7pv"]
-material = SubResource("ORMMaterial3D_5wce4")
-size = Vector3(0.05, 0.02, 8)
-
 [sub_resource type="SphereShape3D" id="SphereShape3D_5wce4"]
 radius = 0.4
 
@@ -291,34 +297,9 @@ ease = 1
 [node name="Player" type="CharacterBody3D" unique_id=1939885779 groups=["PlayerGroup"]]
 collision_layer = 2
 script = ExtResource("1_qhqgy")
-mesh_menu_turn_speed = null
-menu_camera_zoom_fov = null
-sprint_speed_multiplier = null
-slide_impulse_velocity = null
-slide_friction_decay = null
-base_slide_friction = null
-slide_steer_speed = null
-minimum_slide_boost = null
-movement_speed = null
-crouch_speed = null
-climb_speed = null
-acceleration = null
-rotation_speed = null
-dodge_speed = null
-dodge_duration = null
-dodge_cooldown = null
-throw_impulse_force = null
-attack_duration = null
-attack_cooldown = null
-attack_movement_dampening = null
-maximum_health = null
-max_bola_ammo = null
-pebble_throw_cooldown = null
-trap_ammo = null
-slime_ammo = null
-bomb_ammo = null
+equipped_gadgets_deck = Array[ExtResource("2_jej6c")]([ExtResource("3_3v2ag"), ExtResource("4_i4ail"), ExtResource("2_d2wvv"), ExtResource("4_jej6c"), ExtResource("6_qfm1y"), ExtResource("8_a38lo")])
 pebble_blueprint = ExtResource("2_ur7pv")
-dust_blueprint = ExtResource("3_smehm")
+dust_blueprint = ExtResource("8_4r5pv")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1937838941]
 shape = SubResource("CapsuleShape3D_jfnov")
@@ -512,18 +493,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.36653394, -0.083, 0.224)
 transform = Transform3D(0.08, 0, 0, 0, 0.08, 0, 0, 0, 0.08, 0, 0, 0)
 mesh = SubResource("SphereMesh_5wce4")
 
-[node name="Aim_Line_Pointer" type="Node3D" parent="." unique_id=1363663862]
-
-[node name="Line_Visual" type="MeshInstance3D" parent="Aim_Line_Pointer" unique_id=155258009]
-physics_interpolation_mode = 1
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
-mesh = SubResource("BoxMesh_ur7pv")
-
-[node name="Lob_Line_Pointer" type="Node3D" parent="." unique_id=722407667]
-
-[node name="Line_Visual" type="MeshInstance3D" parent="Lob_Line_Pointer" unique_id=1330721301]
-physics_interpolation_mode = 1
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+[node name="AimIndicators" parent="EiraVisualCapsuleMesh" unique_id=1570289844 instance=ExtResource("12_3v2ag")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -0.2)
 
 [node name="CeilingCheck" type="ShapeCast3D" parent="." unique_id=53180190]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
@@ -573,8 +544,6 @@ tween_resource = SubResource("Resource_jej6c")
 camera_3d_resource = ExtResource("9_ur7pv")
 follow_offset = Vector3(0, 5, 7)
 vertical_rotation_offset = 0.6108652381980153
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Bola_PCAM" type="Node3D" parent="." unique_id=1858663433 node_paths=PackedStringArray("follow_target", "follow_path", "look_at_target")]
@@ -588,9 +557,6 @@ look_at_mode = 2
 look_at_target = NodePath("../EiraVisualCapsuleMesh/LeftHipMarker")
 tween_resource = SubResource("Resource_f1ej7")
 camera_3d_resource = ExtResource("9_ur7pv")
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Trap_PCAM" type="Node3D" parent="." unique_id=1498136738 node_paths=PackedStringArray("follow_target", "follow_path", "look_at_target")]
@@ -604,9 +570,6 @@ look_at_mode = 2
 look_at_target = NodePath("../EiraVisualCapsuleMesh/WaistLeftMarker")
 tween_resource = SubResource("Resource_oprun")
 camera_3d_resource = ExtResource("9_ur7pv")
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Pebble_PCAM" type="Node3D" parent="." unique_id=204778161 node_paths=PackedStringArray("follow_target", "follow_path", "look_at_target")]
@@ -620,9 +583,6 @@ look_at_mode = 2
 look_at_target = NodePath("../EiraVisualCapsuleMesh/WaistCenterMarker")
 tween_resource = SubResource("Resource_qfm1y")
 camera_3d_resource = ExtResource("9_ur7pv")
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Slime_PCAM" type="Node3D" parent="." unique_id=1110710402 node_paths=PackedStringArray("follow_target", "follow_path", "look_at_target")]
@@ -636,9 +596,6 @@ look_at_mode = 2
 look_at_target = NodePath("../EiraVisualCapsuleMesh/WaistRightMarker")
 tween_resource = SubResource("Resource_a8ls1")
 camera_3d_resource = ExtResource("9_ur7pv")
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Bomb_PCAM" type="Node3D" parent="." unique_id=34317325 node_paths=PackedStringArray("follow_target", "follow_path", "look_at_target")]
@@ -652,9 +609,6 @@ look_at_mode = 2
 look_at_target = NodePath("../EiraVisualCapsuleMesh/RightHipMarker")
 tween_resource = SubResource("Resource_ur7pv")
 camera_3d_resource = ExtResource("9_ur7pv")
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
 metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 
 [node name="Camera_Controller" type="Node3D" parent="." unique_id=641138117]
@@ -664,10 +618,35 @@ metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 [node name="Camera3D" type="Camera3D" parent="Camera_Controller/Camera_Pivot" unique_id=1685266679]
 physics_interpolation_mode = 1
 transform = Transform3D(1, 0, 0, 0, 0.819152, 0.5735765, 0, -0.5735765, 0.819152, 0, 5.5735765, 7.819152)
-top_level = true
 
 [node name="PhantomCameraHost" type="Node" parent="Camera_Controller/Camera_Pivot/Camera3D" unique_id=65446750]
 process_priority = 300
 process_physics_priority = 300
 script = ExtResource("6_y4r1p")
 metadata/_custom_type_script = "uid://bd046eokvcnu2"
+
+[node name="GadgetManagerComponent" type="Node3D" parent="." unique_id=547611908]
+script = ExtResource("14_f1ej7")
+
+[node name="Systems" type="Node3D" parent="." unique_id=1461973936]
+
+[node name="AimController" type="Node3D" parent="Systems" unique_id=1803531301 node_paths=PackedStringArray("player_reference", "eira_body_mesh")]
+script = ExtResource("15_fulsm")
+player_reference = NodePath("../..")
+eira_body_mesh = NodePath("../../EiraVisualCapsuleMesh")
+
+[node name="IndicatorController" type="Node3D" parent="Systems" unique_id=856375603 node_paths=PackedStringArray("indicator_rig", "player_reference")]
+script = ExtResource("16_4r5pv")
+indicator_rig = NodePath("../../EiraVisualCapsuleMesh/AimIndicators")
+player_reference = NodePath("../..")
+
+[node name="ProjectileLauncher" type="Node3D" parent="Systems" unique_id=1636491346]
+script = ExtResource("15_a8ls1")
+
+[node name="LobPredictor" type="Node3D" parent="Systems" unique_id=747127524 node_paths=PackedStringArray("indicator_rig", "camera_reference")]
+script = ExtResource("16_qfm1y")
+indicator_rig = NodePath("../../EiraVisualCapsuleMesh/AimIndicators")
+camera_reference = NodePath("../../Camera_Controller/Camera_Pivot/Camera3D")
+
+[node name="TrapPlacementSystem" type="Node3D" parent="Systems" unique_id=2035606296]
+script = ExtResource("22_a38lo")

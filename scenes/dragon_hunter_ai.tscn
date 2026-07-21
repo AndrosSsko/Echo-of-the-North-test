@@ -1,8 +1,10 @@
 [gd_scene format=3 uid="uid://cvfjqwnegqntm"]
 
 [ext_resource type="Script" uid="uid://bcjpsy1rbe8v6" path="res://scripts/dragon_hunter_ai.gd" id="1_homin"]
-[ext_resource type="PackedScene" uid="uid://b2y7debdhpia8" path="res://scenes/dropped_sword_physics.tscn" id="2_20pit"]
 [ext_resource type="Script" uid="uid://c2ab0erd7uks2" path="res://scripts/vfx/dizzy_stars_halo_motor.gd" id="3_20pit"]
+[ext_resource type="Script" uid="uid://e35hcmpcndt4" path="res://scripts/vision_sensor_3d.gd" id="4_nx1ie"]
+[ext_resource type="Script" uid="uid://d343qbmhsth5o" path="res://scripts/health_posture_component.gd" id="4_p0nv6"]
+[ext_resource type="Script" uid="uid://boysujyumb8sd" path="res://scripts/vision_cone_renderer.gd" id="5_14txd"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_p0nv6"]
 radius = 0.6
@@ -22,21 +24,9 @@ radius = 1.2
 
 [sub_resource type="BoxMesh" id="BoxMesh_mnx6x"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_homin"]
-transparency = 1
-shading_mode = 0
-albedo_color = Color(1, 0.2, 0.2, 0.13725491)
-
-[sub_resource type="ImmediateMesh" id="ImmediateMesh_5kn0f"]
-
-[node name="Dragon_Hunter" type="CharacterBody3D" unique_id=1700590246 node_paths=PackedStringArray("hand_weapon_mesh", "alert_anchor", "alert_label")]
+[node name="Dragon_Hunter" type="CharacterBody3D" unique_id=1700590246]
 collision_layer = 5
 script = ExtResource("1_homin")
-ray_density_multiplier = 80
-dropped_weapon_blueprint = ExtResource("2_20pit")
-hand_weapon_mesh = NodePath("Weapon_Hand_Anchor/Hunter_Sword_Mesh")
-alert_anchor = NodePath("Alert_Pop_Anchor")
-alert_label = NodePath("Alert_Pop_Anchor/Alert_Pop_Label")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1210944013]
 shape = SubResource("CapsuleShape3D_p0nv6")
@@ -97,10 +87,15 @@ billboard = 1
 modulate = Color(0, 0, 0, 1)
 outline_modulate = Color(1, 1, 1, 1)
 
-[node name="Dynamic_Vision_Cone" type="MeshInstance3D" parent="." unique_id=446930051]
-material_override = SubResource("StandardMaterial3D_homin")
-cast_shadow = 0
-mesh = SubResource("ImmediateMesh_5kn0f")
-
 [node name="DizzyStarsHaloMotor" type="Node3D" parent="." unique_id=389203999]
 script = ExtResource("3_20pit")
+
+[node name="VisionSensor3D" type="Node3D" parent="." unique_id=1995706378]
+script = ExtResource("4_nx1ie")
+
+[node name="VisionConeRenderer" type="MeshInstance3D" parent="." unique_id=1050031145 node_paths=PackedStringArray("vision_sensor")]
+script = ExtResource("5_14txd")
+vision_sensor = NodePath("../VisionSensor3D")
+
+[node name="HealthPostureComponent" type="Node" parent="." unique_id=1355575633]
+script = ExtResource("4_p0nv6")

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GadgetResource" format=3 uid="uid://c84pypi55r2yg"]
+
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="1_lcsd2"]
+[ext_resource type="PackedScene" uid="uid://7rs5qotn0uiy" path="res://scenes/gadgets/stealth_bola.tscn" id="1_lqx7n"]
+
+[resource]
+script = ExtResource("1_lcsd2")
+display_name = "Bola"
+type = 1
+throw_impulse = 25.0
+project_parabolic_lob_arc = false
+projectile_scene_file = ExtResource("1_lqx7n")
+metadata/_custom_type_script = "uid://c5bx8wjc4b02m"

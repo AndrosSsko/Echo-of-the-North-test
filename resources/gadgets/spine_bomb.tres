@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="GadgetResource" format=3 uid="uid://b216dgue0axpe"]
+
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="1_7veq2"]
+[ext_resource type="PackedScene" uid="uid://cukd77bly7ek6" path="res://scenes/gadgets/dragon_spine_bomb.tscn" id="1_t6glh"]
+
+[resource]
+script = ExtResource("1_7veq2")
+display_name = "Spine Bomb"
+type = 4
+throw_impulse = 19.0
+projectile_scene_file = ExtResource("1_t6glh")
+metadata/_custom_type_script = "uid://c5bx8wjc4b02m"

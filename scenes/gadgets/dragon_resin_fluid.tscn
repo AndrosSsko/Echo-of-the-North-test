@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://b2xylj0vok1p3"]
+
+[ext_resource type="Script" uid="uid://b2qggx5esbvf4" path="res://scripts/dragon_resin_fluid.gd" id="1_iwpdr"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_jfnov"]
+radius = 0.18
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mww8h"]
+shading_mode = 0
+albedo_color = Color(1, 0.4, 0, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_5wce4"]
+radius = 0.18
+height = 0.36
+
+[node name="Dragon_Resin_Fluid" type="Area3D" unique_id=1570286084]
+script = ExtResource("1_iwpdr")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=639352466]
+shape = SubResource("SphereShape3D_jfnov")
+
+[node name="FluidSphereMesh" type="MeshInstance3D" parent="." unique_id=239000636]
+material_override = SubResource("StandardMaterial3D_mww8h")
+mesh = SubResource("SphereMesh_5wce4")

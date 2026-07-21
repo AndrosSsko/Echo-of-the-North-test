@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GadgetResource" format=3 uid="uid://cw5uou1kgbaqh"]
+
+[ext_resource type="Script" uid="uid://c5bx8wjc4b02m" path="res://scripts/gadget_resource.gd" id="1_4hftp"]
+[ext_resource type="PackedScene" uid="uid://b2xylj0vok1p3" path="res://scenes/gadgets/dragon_resin_fluid.tscn" id="1_4kof1"]
+
+[resource]
+script = ExtResource("1_4hftp")
+display_name = "Launcher"
+type = 5
+throw_impulse = 22.0
+project_parabolic_lob_arc = false
+projectile_scene_file = ExtResource("1_4kof1")
+metadata/_custom_type_script = "uid://c5bx8wjc4b02m"

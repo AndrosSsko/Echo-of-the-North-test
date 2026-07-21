@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://dm2a60m5qcnbs"]
+
+[ext_resource type="Script" uid="uid://cc1pe5hub6i48" path="res://scripts/gadgets/launcher_projectile.gd" id="1_1dg3b"]
+
+[node name="Launcher" type="RigidBody3D" unique_id=1212105497]
+script = ExtResource("1_1dg3b")

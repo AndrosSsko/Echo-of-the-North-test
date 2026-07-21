@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://c6144ymdmia6v"]
+
+[ext_resource type="Script" uid="uid://btmptuvy4o7u7" path="res://scripts/hardened_resin_structure.gd" id="1_0wgjh"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0wgjh"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_1vaxv"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_3y5um"]
+size = Vector3(1.6, 1.2, 1.2)
+
+[node name="Hardened_Resin_Structure" type="StaticBody3D" unique_id=2143424269]
+script = ExtResource("1_0wgjh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1121682030]
+shape = SubResource("BoxShape3D_0wgjh")
+
+[node name="VisualMesh" type="MeshInstance3D" parent="." unique_id=1963008]
+mesh = SubResource("BoxMesh_1vaxv")
+
+[node name="InteractionVolume" type="Area3D" parent="." unique_id=557276869]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionVolume" unique_id=1007004900]
+shape = SubResource("BoxShape3D_3y5um")

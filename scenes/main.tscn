@@ -101,8 +101,8 @@ use_collision = true
 size = Vector3(60, 1, 60)
 
 [node name="High_Platform" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=1215616398]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.641193, 2, -15)
-size = Vector3(12, 4, 12)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.641193, 2, -7.047407)
+size = Vector3(12, 4, 13.889893)
 
 [node name="Doorway_Cutter" type="CSGBox3D" parent="Norse_Testing_Arena/High_Platform" unique_id=1515262243]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
@@ -110,11 +110,11 @@ operation = 2
 size = Vector3(4, 5, 14)
 
 [node name="ramp" type="CSGPolygon3D" parent="Norse_Testing_Arena" unique_id=1274590663]
-transform = Transform3D(1, 0, 0, 0, 0.8420007, -0.5394764, 0, 0.5394764, 0.8420007, -24.3398, -0.6246201, -3.64073)
+transform = Transform3D(2.4796872, 0, 0, 0, 0.8420007, -0.5394764, 0, 0.5394764, 0.8420007, -25.509863, -0.6246201, 5.280716)
 depth = 7.0
 
 [node name="Cover_Wall_01" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=1375091420]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.641958, 1.25, 6.2905674)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.641958, 1.25, 19.51662)
 size = Vector3(14, 1.25, 1.5)
 
 [node name="Ruined_Pillar" type="CSGCylinder3D" parent="Norse_Testing_Arena" unique_id=56305223]
@@ -134,6 +134,10 @@ size = Vector3(2, 4, 15)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.5, 2, -5)
 size = Vector3(1.5, 4, 6)
 material = SubResource("StandardMaterial3D_eb6dy")
+
+[node name="Stealth_Wall_Right2" type="CSGBox3D" parent="Norse_Testing_Arena" unique_id=256334470]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.2294836, 2, -5)
+size = Vector3(2, 4, 15)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=93016612]
 transform = Transform3D(0.70710677, -0.1830127, 0.68301266, 0, 0.9659258, 0.25881904, -0.70710677, -0.1830127, 0.68301266, 0, 0, 0)
@@ -268,11 +272,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6892505, 1.0589073)
 
 [node name="Dragon_Hunter" parent="." unique_id=93691670 groups=["EnemyGroup"] instance=ExtResource("21_jscy8")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07382536, 2.0650978, -5.099059)
-ray_density_multiplier = 40
 
 [node name="Dragon_Hunter2" parent="." unique_id=195832714 instance=ExtResource("21_jscy8")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.904431, 1.5, -12.105534)
-ray_density_multiplier = 40
 
 [node name="Camouflage_Bush" parent="." unique_id=677202986 instance=ExtResource("22_y6deb")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0693829, 1.499999, -14.243728)

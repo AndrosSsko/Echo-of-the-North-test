@@ -1,0 +1,93 @@
+[gd_scene format=3 uid="uid://cukd77bly7ek6"]
+
+[ext_resource type="Script" uid="uid://btbau6walb44r" path="res://scripts/dragon_spine_bomb.gd" id="1_k3k2i"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_5wce4"]
+radius = 0.25
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cfflo"]
+albedo_color = Color(0.1764706, 0.19215687, 0.1882353, 1)
+metallic = 0.8
+
+[sub_resource type="SphereMesh" id="SphereMesh_q6te3"]
+radius = 0.25
+height = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_3hdq0"]
+size = Vector3(0.1, 0.08, 0.1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6iiya"]
+albedo_color = Color(0.8509804, 0.16862746, 0.16862746, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_mrk7k"]
+top_radius = 0.0
+bottom_radius = 0.04
+height = 0.18
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_1dtma"]
+top_radius = 0.0
+bottom_radius = 0.04
+height = 0.18
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_wfwsl"]
+top_radius = 0.0
+bottom_radius = 0.04
+height = 0.18
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_blsfx"]
+top_radius = 0.0
+bottom_radius = 0.04
+height = 0.18
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_nj2ww"]
+top_radius = 0.0
+bottom_radius = 0.04
+height = 0.18
+
+[node name="Dragon_Spine_Bomb" type="RigidBody3D" unique_id=640725258]
+contact_monitor = true
+max_contacts_reported = 3
+script = ExtResource("1_k3k2i")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=938026667]
+shape = SubResource("SphereShape3D_5wce4")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=2012902238]
+
+[node name="MainShellSphere" type="MeshInstance3D" parent="Visuals" unique_id=255204302]
+material_override = SubResource("StandardMaterial3D_cfflo")
+mesh = SubResource("SphereMesh_q6te3")
+
+[node name="ButtonTop" type="MeshInstance3D" parent="Visuals" unique_id=534662568]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+mesh = SubResource("BoxMesh_3hdq0")
+
+[node name="Spike_Up" type="MeshInstance3D" parent="Visuals" unique_id=360658830]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.38, 0)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_mrk7k")
+
+[node name="Spike_Left" type="MeshInstance3D" parent="Visuals" unique_id=2144473113]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, -0.3, 0, 0)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_1dtma")
+
+[node name="Spike_Right" type="MeshInstance3D" parent="Visuals" unique_id=569260363]
+transform = Transform3D(-4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0, 1, 0.3, 0, 0)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_wfwsl")
+
+[node name="Spike_Front" type="MeshInstance3D" parent="Visuals" unique_id=1063017950]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, -0.3)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_blsfx")
+
+[node name="Spike_Back" type="MeshInstance3D" parent="Visuals" unique_id=665282327]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0.34)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_nj2ww")
+
+[node name="Spike_Down" type="MeshInstance3D" parent="Visuals" unique_id=176270775]
+transform = Transform3D(1, 0, 0, 0, -1, -8.742278e-08, 0, 8.742278e-08, -1, 0, -0.3, 0)
+material_override = SubResource("StandardMaterial3D_6iiya")
+mesh = SubResource("CylinderMesh_nj2ww")

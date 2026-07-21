@@ -1,0 +1,52 @@
+extends RigidBody3D
+
+@export var distraction_radius: float = 4.5
+
+func _ready() -> void:
+	# Natively bind the body entry collision signal loop
+	body_entered.connect(_on_impact_registered)
+
+func _on_impact_registered(body: Node) -> void:
+	# 1. THE SAFETY GUARD: Move this to the ABSOLUTE top of the function!
+	# If the pebble clips Eira or Smudge on spawn, discard it instantly and exit.
+	if body.name == "Player" or body.name == "Smudge" or body.is_in_group("PlayerGroup"): 
+		return
+		
+	print("PEBBLE IMPACT: Clattered against ", body.name, "! Broadcasting sound wave...")
+	
+	# 2. CACHE POSITION LAYER
+	var impact_location: Vector3 = global_position
+	
+	# 3. INSTANTIATE THE TACTICAL AUDIO RADAR RING
+	var ring_blueprint = load("res://scenes/hearing_radius_ring.tscn")
+	if ring_blueprint:
+		var ring_instance = ring_blueprint.instantiate()
+		get_tree().root.add_child(ring_instance)
+		ring_instance.global_position = impact_location + Vector3(0.0, 0.01, 0.0)
+		if ring_instance.has_method("initialize_hearing_expansion"):
+			ring_instance.initialize_hearing_expansion(distraction_radius)
+	
+	# THE RECONCILIATION FIX: Cache the raw global coordinates into a local vector variable!
+	# This safely reads the position *before* the node's tree transform link is broken.
+	
+	# 1. THE VISUAL WAVE BLOOM
+	var ripple_blueprint = load("res://scenes/acoustic_ripple.tscn")
+	if ripple_blueprint:
+		var ripple_instance = ripple_blueprint.instantiate() as MeshInstance3D
+		
+		# SAFE SEQUENCE: Add the child to the scene tree root FIRST...
+		get_tree().root.add_child(ripple_instance)
+		
+		# ...and NOW it is completely safe to assign its 3D global position vectors!
+		ripple_instance.global_position = impact_location
+		ripple_instance.global_position.y += 0.01 
+		
+	# 2. THE STEALTH AUDIO BROADCAST RADAR
+	# Decoupled via EventBus: the pebble no longer needs to know "EnemyGroup"
+	# exists or that guards specifically respond to "investigate_noise()".
+	# Any listener within distraction_radius reacts on its own terms.
+	EventBus.distraction_sound_emitted.emit(impact_location, distraction_radius)
+
+	# Cleanly erase the projectile tracking data from physics memory layers
+	queue_free()
+	

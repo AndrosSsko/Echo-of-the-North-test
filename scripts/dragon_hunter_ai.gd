@@ -1,13 +1,9 @@
 extends CharacterBody3D
 
-enum PatrolPhase { MARCHING, INVESTIGATING, DIZZY, STUNNED, PANICKING, BOLA_STRUGGLE, SLIPPING }
-
-@export_category("Dynamic Field of View Constraints")
-@export var vision_range: float = 9.0       # Max forward viewing reach limit
-@export var vision_angle: float = 45.0       # Sight cone angle radius bounds
-@export var suspicion_build_speed: float = 85.0
-@export var suspicion_decay_speed: float = 65.0
-@export var ray_density_multiplier: int = 40 # Number of physical rays cast to shape the mesh mesh
+# =============================================================================
+#     1. ENUMS AND MODULAR BEHAVIOR PHASES 
+# =============================================================================
+enum PatrolPhase { MARCHING, INVESTIGATING, DIZZY, STUNNED, PANICKING, BOLA_STRUGGLE, SLIPPING, CHASING }
 
 @export_category("Patrol Waypoints")
 @export var movement_speed: float = 3.5
@@ -15,47 +11,39 @@ enum PatrolPhase { MARCHING, INVESTIGATING, DIZZY, STUNNED, PANICKING, BOLA_STRU
 @export var acceleration: float = 8.0
 @export var turn_speed: float = 5.0
 
-
-
-
-
-@export_category("Posture System")
-@export var max_thump_posture: int = 5 
-var current_thump_posture: int = 5
-var dizzy_timer: float = 0.0
+@export_category("Incapacitation Durations")
 @export var dizzy_duration: float = 4.0 
 
-var player_ref: CharacterBody3D = null
-var current_suspicion_value: float = 0.0
-var current_phase: PatrolPhase = PatrolPhase.MARCHING
+# CHILD COMPONENT INTERFACE HOOKS [PDF: 0.1.10]
+@onready var vision_sensor: VisionSensor3D = $VisionSensor3D
+@onready var health_posture: HealthPostureComponent = $HealthPostureComponent
+@onready var dizzy_stars_halo: Node3D = $DizzyStarsHaloMotor
 
-var is_currently_armed: bool = true
-var dropped_weapon_global_target_pos: Vector3 = Vector3.ZERO
-
-@onready var dynamic_cone_mesh_instance: MeshInstance3D = $Dynamic_Vision_Cone
+# SCENE LAYER OVERLAYS [PDF: 0.1.10]
 @onready var suspicion_label_3d: Label3D = find_child("Suspicion_Label", true, false)
 @onready var takedown_label_3d: Label3D = $Takedown_Label
-@onready var thump_label_3d: Label3D = $Thump_Label
 @onready var visual_mesh: MeshInstance3D = $MeshInstance3D
 @onready var cascade_sensor_area: Area3D = $Impact_Cascade_Sensor
+
 @onready var point_a: Vector3 = $"../Patrol_Point_C".global_position if name == "Dragon_Hunter_High" else $"../Patrol_Point_A".global_position
 @onready var point_b: Vector3 = $"../Patrol_Point_D".global_position if name == "Dragon_Hunter_High" else $"../Patrol_Point_B".global_position
 @onready var equipped_weapon_mesh: Node3D = get_node_or_null("Skeleton3D/RightHandSlot/SwordMesh")
-@onready var dizzy_stars_halo: Node3D = $DizzyStarsHaloMotor
 
 @export_category("Lootable Rewards System")
 @export var matches_to_award: int = 1
 @export var bola_ammo_to_award: int = 1
+
 @export_category("Disarm System Blueprint Layout")
 @export var dropped_weapon_blueprint: PackedScene 
 @export var hand_weapon_mesh: MeshInstance3D 
 @export var alert_anchor: Node3D
 @export var alert_label: Label3D
 
-var alert_bubble_spring_scale: float = 0.0
-var alert_bubble_spring_velocity: float = 0.0
-var alert_bubble_display_timer: float = 0.0
-var vision_cone_material: StandardMaterial3D = null
+# REAL-TIME WORKING STATE TELEMETRIES [PDF: 0.1.10]
+var player_ref: CharacterBody3D = null
+var current_phase: PatrolPhase = PatrolPhase.MARCHING
+var is_currently_armed: bool = true
+var dropped_weapon_global_target_pos: Vector3 = Vector3.ZERO
 var cascade_slide_velocity: Vector3 = Vector3.ZERO
 var current_target_destination: Vector3 = Vector3.ZERO
 var noise_target_position: Vector3 = Vector3.ZERO
@@ -64,99 +52,114 @@ var is_flashing_alert: bool = false
 var original_mesh_y: float = 0.0
 var is_frantically_disarmed: bool = false
 var active_dropped_weapon_instance: RigidBody3D = null
-var max_stability: int
-var current_stability: int
 var is_currently_lootable: bool = false
 var has_already_been_looted: bool = false
 var bola_struggle_timer: float = 0.0
-var is_slipping_in_slime: bool = false
-var slime_scramble_timer: float = 0.0
-var weapon_dropped_this_slip: bool = false
+var alert_bubble_spring_scale: float = 0.0
+var alert_bubble_spring_velocity: float = 0.0
+var alert_bubble_display_timer: float = 0.0
+var dizzy_timer: float = 0.0
 
+# === 🦇 ARKHAM-STYLE FREEFLOW COUNTER STATE HOOKS ===
+var is_vulnerable_to_counter: bool = false
+var combat_strike_cooldown_clock: float = 0.0
 
+# INTEGRATED BEHAVIOR TREE UTILITIES [PDF: 0.1.11]
+var blackboard: AIBlackboard
+var slip_task: TaskSlimeSlip
+
+# =============================================================================
+#     2. ENGINE SYSTEM READY CORRIDORS [PDF: 0.1.11, 0.1.12]
+# =============================================================================
 func _ready() -> void:
-	max_stability = randi_range(2, 5)
-	current_stability = max_stability
 	add_to_group("EnemyGroup")
 	current_target_destination = point_a
-	current_thump_posture = max_thump_posture
+	
 	if is_instance_valid(visual_mesh):
 		original_mesh_y = visual_mesh.position.y
 	if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
 	if is_instance_valid(takedown_label_3d): takedown_label_3d.visible = false
-	if is_instance_valid(thump_label_3d): thump_label_3d.visible = false
-	if is_instance_valid(dynamic_cone_mesh_instance):
-		if is_instance_valid(dynamic_cone_mesh_instance.material_override):
-			vision_cone_material = dynamic_cone_mesh_instance.material_override.duplicate() as StandardMaterial3D
-			dynamic_cone_mesh_instance.material_override = vision_cone_material
-		elif dynamic_cone_mesh_instance.get_active_material(0):
-			vision_cone_material = dynamic_cone_mesh_instance.get_active_material(0).duplicate() as StandardMaterial3D
-			dynamic_cone_mesh_instance.material_override = vision_cone_material
-
-func _physics_process(delta: float) -> void:
 	
-	# === 1. COMPLETELY FREEZE PATROL ENGINE MOVEMENT MARKS ===
-	if current_phase == PatrolPhase.SLIPPING:
+	# BRIDGE HEALTH/SIGHT SIGNALS TO OUR STREAMLINED SENSOR NODES [PDF: 0.1.12]
+	if is_instance_valid(health_posture):
+		health_posture.posture_damaged.connect(_on_posture_damaged)
+		health_posture.posture_shattered.connect(_on_posture_shattered)
+		health_posture.posture_recovered.connect(_on_posture_recovered)
+		
+	if is_instance_valid(vision_sensor):
+		vision_sensor.player_detected.connect(_on_vision_sensor_updated)
+		vision_sensor.player_lost.connect(_on_vision_sensor_lost)
+
+	# --- BEHAVIOR TREE INITIALIZATION --- [PDF: 0.1.12]
+	blackboard = AIBlackboard.new()
+	blackboard.name = "Blackboard"
+	add_child(blackboard)
+	
+	slip_task = TaskSlimeSlip.new()
+	slip_task.name = "SlipTask"
+	add_child(slip_task)
+	
+	var bola_task = TaskBolaStruggle.new()
+	bola_task.name = "BolaTask"
+	add_child(bola_task)
+	
+	if is_instance_valid(EventBus):
+		EventBus.gadget_impact.connect(_on_gadget_impact_received)
+		if EventBus.has_signal("distraction_sound_emitted"):
+			EventBus.distraction_sound_emitted.connect(_on_distraction_sound_emitted)
+
+func _on_distraction_sound_emitted(sound_position: Vector3, hearing_distance: float) -> void:
+	if global_position.distance_to(sound_position) <= hearing_distance:
+		investigate_noise(sound_position)
+
+# =============================================================================
+#     3. CORE PHYSICS PROCESS INTERCEPTS (_PHYSICS_PROCESS) [PDF: 0.1.13]
+# =============================================================================
+func _physics_process(delta: float) -> void:
+	if blackboard.get_value("is_slipped", false):
 		process_tactical_stealth_takedown_radar()
-		current_suspicion_value = 0.0
 		if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
 		if is_instance_valid(takedown_label_3d): takedown_label_3d.visible = false
-		
-		# --- STAGE 1: THE CARTOON SCRAMBLE LOCK ---
-		# Enforces the Looney Tunes on-the-spot running freeze!
-		if not weapon_dropped_this_slip:
-			velocity.x = 0.0
-			velocity.z = 0.0
-			velocity.y = -0.1
-			
-		# --- STAGE 2: THE FACE-PLANT GROUND CLAMP ---
-		# Forcefully pins him flat on his face to stop duplicate path drifting
-		else:
-			velocity.y = -4.0 
-			velocity.x = move_toward(velocity.x, 0.0, 16.0 * delta)
-			velocity.z = move_toward(velocity.z, 0.0, 16.0 * delta)
-			
-		# Process environmental falling gravity weights naturally mid-dive
-		if not is_on_floor() and not weapon_dropped_this_slip:
-			var default_engine_gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
-			velocity.y -= default_engine_gravity * delta
-			
-		# FIXED INDENTATION: These two calls MUST sit INSIDE the slipping block!
-		move_and_slide()
-		return # Safely yields execution frame loops ONLY when actively slipping!
+		slip_task.execute_task(self, blackboard, delta)
+		return
 
 	process_tactical_stealth_takedown_radar()
-	
-	# 1. PANICKING STATE MATRIX OVERRIDE
+
 	if current_phase == PatrolPhase.PANICKING:
-		current_suspicion_value = 0.0
 		if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
 		process_weapon_scramble_panic_loop(delta)
 		return
-		
-	# 2. TICK THE SPRING MATH VARIABLES EVERY FRAME TICK
+
 	process_alert_bubble_spring_math(delta)
-	
-	# 3. SAFETY FALLBACK HOOKS
+
 	if not is_instance_valid(player_ref):
 		player_ref = get_tree().get_first_node_in_group("PlayerGroup") as CharacterBody3D
 		return
-		
-	# 4. INCAPACITATION GATES (STUNNED / DIZZY / BOLA_STRUGGLE)
-	# Cleanly unified all 3 immobilization states together into one safe processing channel!
-	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE or current_phase == PatrolPhase.SLIPPING:
-		current_suspicion_value = 0.0
+
+	if current_phase == PatrolPhase.CHASING:
+		if combat_strike_cooldown_clock > 0.0:
+			combat_strike_cooldown_clock -= delta
+		else:
+			var distance_to_eira: float = global_position.distance_to(player_ref.global_position)
+			if distance_to_eira <= 1.9:
+				trigger_procedural_counter_window()
+
+	# HARD-LOCK IMMOBILIZATION STATES TOGETHER [PDF: 0.1.13]
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE:
 		velocity = Vector3.ZERO
+		is_vulnerable_to_counter = false # Instantly close counter windows if incapacitated
 		if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
 		if is_instance_valid(takedown_label_3d): takedown_label_3d.visible = false
 		
-		# Execute specialized sub-state handlers
 		if current_phase == PatrolPhase.DIZZY:
 			process_dizzy_state(delta)
 		elif current_phase == PatrolPhase.BOLA_STRUGGLE:
-			process_bola_entanglement_struggle_loop(delta)
-			
-		# ACCIDENTAL DOMINO CASCADE EFFECT ENFORCER
+			if has_node("BolaTask"):
+				get_node("BolaTask").execute_task(self, blackboard, delta)
+				if not blackboard.get_value("is_tangled", false):
+					rotation_degrees.z = 0.0
+					
+		# ACCIDENTAL DOMINO CASCADE TRANSFERS [PDF: 0.1.14]
 		if current_phase == PatrolPhase.STUNNED and is_instance_valid(cascade_sensor_area):
 			for overlapping_body in cascade_sensor_area.get_overlapping_bodies():
 				if overlapping_body is CharacterBody3D and overlapping_body != self and overlapping_body.is_in_group("EnemyGroup"):
@@ -168,328 +171,42 @@ func _physics_process(delta: float) -> void:
 			velocity = cascade_slide_velocity
 			move_and_slide()
 			cascade_slide_velocity = lerp(cascade_slide_velocity, Vector3.ZERO, 6.0 * delta)
-			
-		return # Exit cleanly after processing the active incapacitation frame
-		
-	# 5. CORE SENSORY & VISION ENGINE LOOPS
-	var is_player_currently_visible: bool = evaluate_vision_state()
-	
-	if not is_player_currently_visible and current_phase == PatrolPhase.MARCHING:
+		return
+
+	# === 🦇 THE LIVE COMBAT STRIKE TRIGGER INTERCEPT ===
+	# If fully alerted and standing within a tight 2.3m close-quarters bubble, cycle attacks!
+	if is_instance_valid(vision_sensor) and vision_sensor.current_suspicion >= 100.0:
+		if combat_strike_cooldown_clock > 0.0:
+			combat_strike_cooldown_clock -= delta
+		else:
+			var distance_to_eira: float = global_position.distance_to(player_ref.global_position)
+			if distance_to_eira <= 2.3 and current_phase == PatrolPhase.MARCHING:
+				trigger_procedural_counter_window()
+
+	# MONITOR DROPPED TEAMMATES VIA ANGULAR SENSORY CHECKS [PDF: 0.1.14]
+	var is_cone_active: bool = is_instance_valid(vision_sensor) and vision_sensor.current_suspicion > 0.01
+	if not is_cone_active and current_phase == PatrolPhase.MARCHING:
 		var all_guards = get_tree().get_nodes_in_group("EnemyGroup")
 		for other_guard in all_guards:
-			if is_instance_valid(other_guard) and other_guard != self:
-				if "current_phase" in other_guard:
-					if other_guard.current_phase == PatrolPhase.STUNNED:
-						var distance_to_body = global_position.distance_to(other_guard.global_position)
-						if distance_to_body <= vision_range:
-							var forward_heading: Vector3 = -global_transform.basis.z.normalized()
-							var vec_to_body: Vector3 = other_guard.global_position - global_position
-							var angle_to_body: float = rad_to_deg(forward_heading.angle_to(vec_to_body.normalized()))
-							
-							if angle_to_body <= vision_angle:
-								var space_state = get_world_3d().direct_space_state
-								var ray_query = PhysicsRayQueryParameters3D.create(global_position + Vector3(0.0, 0.5, 0.0), other_guard.global_position + Vector3(0.0, 0.5, 0.0))
-								var ray_result = space_state.intersect_ray(ray_query)
-								
-								if ray_result.is_empty() or ray_result["collider"] == other_guard:
-									investigate_noise(other_guard.global_position)
-									if is_instance_valid(suspicion_label_3d):
-										suspicion_label_3d.visible = true
-										suspicion_label_3d.text = "❓ What happened here? ❓"
-										suspicion_label_3d.modulate = Color("#33ccff")
-										
-	# Capture reset mechanics
-	if current_suspicion_value >= 100.0:
-		player_ref.trigger_capture_respawn()
-		current_suspicion_value = 0.0
-		current_phase = PatrolPhase.MARCHING
-		current_target_destination = point_a
-		
-	# 6. ROUTE DISPATCH SWITCH STATE LOOP
+			if is_instance_valid(other_guard) and other_guard != self and "current_phase" in other_guard:
+				if other_guard.current_phase == PatrolPhase.STUNNED and global_position.distance_to(other_guard.global_position) <= vision_sensor.vision_range:
+					var forward_heading: Vector3 = -global_transform.basis.z.normalized()
+					var vec_to_body: Vector3 = (other_guard.global_position - global_position).normalized()
+					if acos(clampf(forward_heading.dot(vec_to_body), -1.0, 1.0)) <= deg_to_rad(vision_sensor.vision_angle):
+						var space_state = get_world_3d().direct_space_state
+						var query = PhysicsRayQueryParameters3D.create(global_position + Vector3(0.0, 0.5, 0.0), other_guard.global_position + Vector3(0.0, 0.5, 0.0))
+						var ray_result = space_state.intersect_ray(query)
+						if ray_result.is_empty() or ray_result["collider"] == other_guard:
+							investigate_noise(other_guard.global_position)
+
 	match current_phase:
-		PatrolPhase.MARCHING:
-			process_patrol_loop(delta)
-		PatrolPhase.INVESTIGATING:
-			process_investigation_loop(delta)
+		PatrolPhase.MARCHING: process_patrol_loop(delta)
+		PatrolPhase.INVESTIGATING: process_investigation_loop(delta)
+		PatrolPhase.CHASING: process_combat_chase_loop(delta)
 
-
-func process_alert_bubble_spring_math(delta: float) -> void:
-	# THE EXPORT ALIGNMENT FIX: Use your new clean 'alert_anchor' and 'alert_label' variables!
-	if is_instance_valid(alert_anchor) and is_instance_valid(alert_label):
-		if alert_bubble_display_timer > 0.0:
-			alert_bubble_display_timer -= delta
-			alert_label.visible = true
-			
-			# --- HOOKE'S LAW EQUATION SOLVER ---
-			var displacement: float = 1.0 - alert_bubble_spring_scale
-			var spring_force: float = (displacement * 180.0) - (alert_bubble_spring_velocity * 14.0)
-			
-			alert_bubble_spring_velocity += spring_force * delta
-			alert_bubble_spring_scale += alert_bubble_spring_velocity * delta
-			
-			# COMEDIC SQUASH & STRETCH EXTRUSION
-			var stretch_x: float = alert_bubble_spring_scale + (alert_bubble_spring_velocity * 0.015)
-			var squash_y: float = alert_bubble_spring_scale - (alert_bubble_spring_velocity * 0.012)
-			alert_anchor.scale = Vector3(stretch_x, squash_y, alert_bubble_spring_scale)
-			
-			# Smoothly fade the text alpha during the final frames
-			if alert_bubble_display_timer <= 0.4:
-				alert_label.modulate.a = move_toward(alert_label.modulate.a, 0.0, 2.5 * delta)
-		else:
-			# Shutter close reset routines
-			alert_label.visible = false
-			alert_bubble_spring_scale = 0.0
-			alert_bubble_spring_velocity = 0.0
-
-
-# --- MASTER SENSORY OVERRIDE GATEWAY (REPLACE YOUR INVESTIGATE_NOISE ENTIRELY) ---
-func investigate_noise(noise_pos: Vector3) -> void:
-	if current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.STUNNED:
-		return
-		
-	var dialog_bubble_text: String = "HUH? What's that noise?"
-	var _bubble_panel_tint: Color = Color("#33ccff") # Cyan bubble theme for general noise clatter
-	
-	# Group radar scanning check: Did a teammate drop flat out cold nearby?
-	var all_guards = get_tree().get_nodes_in_group("EnemyGroup")
-	var found_unconscious_ally: bool = false
-	for other_guard in all_guards:
-			if is_instance_valid(other_guard) and other_guard != self:
-				# THE SAFETY GUARD FIX: Ensure the object actually has a phase variable!
-				if "current_phase" in other_guard:
-					if other_guard.current_phase == PatrolPhase.STUNNED and global_position.distance_to(other_guard.global_position) <= vision_range:
-						found_unconscious_ally = true
-						break
-				
-	if found_unconscious_ally:
-		dialog_bubble_text = "WHAT HAPPENED?! This one is out cold!"
-		_bubble_panel_tint = Color("#ff3333") # Urgent panic alert red
-	elif current_suspicion_value > 45.0:
-		dialog_bubble_text = "WHO'S THERE?! I know someone is hiding!"
-		_bubble_panel_tint = Color("#ffcc00") # Warning alert amber orange
-		
-	get_node("/root/DialogueBox").roll_typewriter_dialogue("Guard", dialog_bubble_text, 0.05)
-	
-	# Trigger state mechanics updates
-	if current_phase != PatrolPhase.INVESTIGATING:
-		noise_target_position = noise_pos
-		current_phase = PatrolPhase.INVESTIGATING
-		phase_timer = 3.0 # Inspect the coordinates for 3 full seconds
-		
-		# --- INITIALIZE COMIIC SPRING STAGE ---
-		if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
-			alert_label.text = dialog_bubble_text
-			
-			# Drive the Comic Bubble background color panel texture in real-time
-			alert_label.modulate = Color.BLACK # Text color stays black for sharp contrast
-			
-			# Reset alpha transparency levels and snap scale down to absolute zero
-			alert_label.modulate.a = 1.0
-			alert_anchor.scale = Vector3.ZERO
-			
-			# Give the spring velocity a heavy initial kick-start impulse value!
-			# 12.0 launches it exploding outward instantly before it begins to wobble!
-			alert_bubble_spring_velocity = 12.0 
-			alert_bubble_spring_scale = 0.0
-			alert_bubble_display_timer = 2.8 # Visible duration limit parameter
-
-func evaluate_vision_state() -> bool:
-	var smudge_node: Node = null
-	
-	# 1. INITIAL INSTANCE VALIDATION FALLBACKS
-	if not is_instance_valid(player_ref):
-		player_ref = get_tree().get_first_node_in_group("PlayerGroup") as CharacterBody3D
-		if not is_instance_valid(player_ref):
-			clear_procedural_vision_mesh()
-			return false
-			
-	# 2. THE STEALTH FOLIAGE COVER SHUTTER GATEWAY
-	if "is_player_currently_visible" in player_ref:
-		if not player_ref.is_player_currently_visible:
-			current_suspicion_value = move_toward(current_suspicion_value, 0.0, 35.0 * get_process_delta_time())
-			if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
-			construct_dynamic_clipping_vision_mesh()
-			return false
-
-	# 3. NATIVE ALGEBRAIC FIELD OF VIEW INTERSECTION CHECKS
-	var is_player_tracked: bool = false
-	var distance_to_eira: float = global_position.distance_to(player_ref.global_position)
-	
-	if distance_to_eira <= vision_range:
-		var forward_heading: Vector3 = -global_transform.basis.z.normalized()
-		var vector_to_eira: Vector3 = player_ref.global_position - global_position
-		var angle_to_eira: float = rad_to_deg(forward_heading.angle_to(vector_to_eira.normalized()))
-		
-		if angle_to_eira <= vision_angle:
-			var space_state = get_world_3d().direct_space_state
-			var eye_level: Vector3 = global_position + Vector3(0.0, 0.5, 0.0)
-			var target_level: Vector3 = player_ref.global_position + Vector3(0.0, 0.5, 0.0)
-			
-			var sight_line_query = PhysicsRayQueryParameters3D.create(eye_level, target_level)
-			
-			# Fetch your companion handle safely (No 'var' keyword to respect upper scope!)
-			smudge_node = get_tree().get_first_node_in_group("CompanionGroup")
-			
-			# --- BULLETPROOF SINGLE-LINE DIRECT INITIALIZATION ---
-			if is_instance_valid(smudge_node):
-				sight_line_query.exclude = [self.get_rid(), smudge_node.get_rid()]
-			else:
-				sight_line_query.exclude = [self.get_rid()]
-
-			var ray_hit_data = space_state.intersect_ray(sight_line_query)
-			if ray_hit_data.is_empty() or ray_hit_data["collider"] == player_ref:
-				is_player_tracked = true
-
-	# 4. COMPANION SMUDGE SIGHT CONE SCANNER
-	var is_smudge_tracked: bool = false
-	smudge_node = get_tree().get_first_node_in_group("CompanionGroup")
-	
-	if is_instance_valid(smudge_node):
-		var dist_to_smudge: float = global_position.distance_to(smudge_node.global_position)
-		if dist_to_smudge <= vision_range:
-			var forward_heading: Vector3 = -global_transform.basis.z.normalized()
-			var vec_to_smudge: Vector3 = smudge_node.global_position - global_position
-			var angle_to_smudge: float = rad_to_deg(forward_heading.angle_to(vec_to_smudge.normalized()))
-			
-			if angle_to_smudge <= vision_angle:
-				var space_state = get_world_3d().direct_space_state
-				var eye_level: Vector3 = global_position + Vector3(0.0, 0.5, 0.0)
-				var target_level: Vector3 = smudge_node.global_position + Vector3(0.0, 0.5, 0.0)
-				var smudge_query = PhysicsRayQueryParameters3D.create(eye_level, target_level)
-				smudge_query.exclude = [self.get_rid()]
-				
-				var ray_hit = space_state.intersect_ray(smudge_query)
-				if ray_hit.is_empty() or ray_hit["collider"] == smudge_node:
-					is_smudge_tracked = true
-
-	# 5. PROGRESSIVE SUSPICION BAR ACCUMULATOR
-	if is_player_tracked or is_smudge_tracked:
-		var active_dist = distance_to_eira if is_player_tracked else global_position.distance_to(smudge_node.global_position)
-		# Stepping deeper into the cone fills the bar significantly faster
-		var closeness_factor: float = remap(clamp(active_dist, 0.001, vision_range), 0.0, vision_range, 2.5, 0.8)
-		current_suspicion_value = move_toward(current_suspicion_value, 100.0, 40.0 * closeness_factor * get_process_delta_time())
-	else:
-		current_suspicion_value = move_toward(current_suspicion_value, 0.0, 20.0 * get_process_delta_time())
-
-	# 6. RENDER DETECTION TEXT WARNING LABELS
-	if current_suspicion_value > 0.01:
-		if is_instance_valid(suspicion_label_3d):
-			suspicion_label_3d.visible = true
-			if current_suspicion_value >= 100.0:
-				suspicion_label_3d.text = "🚨 ALERT: Spotted! 🚨"
-				suspicion_label_3d.modulate = Color("#ff3333")
-				if current_phase == PatrolPhase.MARCHING:
-					investigate_noise(player_ref.global_position if is_player_tracked else smudge_node.global_position)
-			else:
-				suspicion_label_3d.text = "👀 Detecting... " + str(int(current_suspicion_value)) + "% 👀"
-				suspicion_label_3d.modulate = Color("#ffcc00")
-	else:
-		if is_instance_valid(suspicion_label_3d): 
-			suspicion_label_3d.visible = false
-
-	# RE-RENDER CLIPPED GEOMETRY
-	construct_dynamic_clipping_vision_mesh()
-	
-	# === 6. RENDER DETECTION WARNING LABELS AND ALBEDO TINTS ===
-	if is_instance_valid(dynamic_cone_mesh_instance) and is_instance_valid(vision_cone_material):
-		if current_suspicion_value > 0.01:
-			if is_instance_valid(suspicion_label_3d):
-				suspicion_label_3d.visible = true
-				
-				if current_suspicion_value >= 100.0:
-					suspicion_label_3d.text = "🚨 ALERT: Spotted! 🚨"
-					suspicion_label_3d.modulate = Color("#ff3333")
-					
-					# COMBAT PHASE COLOR SHIFT: Flash Neon Crimson Red!
-					vision_cone_material.albedo_color = Color(1.0, 0.2, 0.2, 0.22)
-					
-					if current_phase == PatrolPhase.MARCHING:
-						investigate_noise(player_ref.global_position if is_player_tracked else smudge_node.global_position)
-				else:
-					suspicion_label_3d.text = "👀 Detecting... " + str(int(current_suspicion_value)) + "% 👀"
-					suspicion_label_3d.modulate = Color("#ffcc00")
-					
-					# SUSPICION DETECTION COLOR SHIFT: Blend to Alert Amber Orange!
-					# Linearly interpolate the color brightness based on how close they are to full alert!
-					var blend_t: float = current_suspicion_value / 100.0
-					vision_cone_material.albedo_color = Color(1.0, 0.6, 0.0, 0.16).lerp(Color(1.0, 0.4, 0.0, 0.2), blend_t)
-		else:
-			if is_instance_valid(suspicion_label_3d): 
-				suspicion_label_3d.visible = false
-				
-			# RELAXED CALM STATE COLOR SHIFT: Default back to cool, passive Cyan Blue!
-			if current_phase == PatrolPhase.INVESTIGATING:
-				vision_cone_material.albedo_color = Color(0.2, 0.8, 1.0, 0.18) # Investigating Alert Cyan
-			else:
-				vision_cone_material.albedo_color = Color(0.1, 0.6, 1.0, 0.12) # Standard Patrol Calm Blue
-	
-	return current_suspicion_value >= 100.0
-	#UPDATE YOUR STANDARD OPEN COMBAT STRIKES CHECK MESH
-func execute_cartoon_dizzy_state() -> void:
-	current_phase = PatrolPhase.DIZZY
-	dizzy_timer = dizzy_duration
-	velocity = Vector3.ZERO
-	print("CARTOON PHYSICS: Guard posture shattered! Entering Dizzy State.")
-	
-	if is_instance_valid(thump_label_3d):
-		thump_label_3d.text = "💫 DIZZY State! 💫"
-		thump_label_3d.modulate = Color("#ff66cc") # Comedic pink tint
-
-	# Comedic wobble loop animation: Spin his body mesh left-and-right rapidly!
-	if is_instance_valid(visual_mesh):
-		var w_tween = create_tween().set_loops(int(dizzy_duration / 0.3))
-		w_tween.tween_property(visual_mesh, "rotation_degrees:y", 15.0, 0.15)
-		w_tween.tween_property(visual_mesh, "rotation_degrees:y", -15.0, 0.15)
-
-func process_dizzy_state(delta: float) -> void:
-	dizzy_timer -= delta
-	
-	# FINISHER EXECUTION GATE: If the player strikes a DIZZY enemy, knock him out instantly!
-	if is_instance_valid(player_ref) and player_ref.is_attacking and global_position.distance_to(player_ref.global_position) <= 2.2:
-		execute_stealth_stun()
-		return
-		
-	if dizzy_timer <= 0.0:
-		print("AI SYSTEMS: Guard recovered his balance and stood back up.")
-		current_phase = PatrolPhase.MARCHING
-		current_thump_posture = max_thump_posture
-		if is_instance_valid(thump_label_3d): thump_label_3d.visible = false
-		if is_instance_valid(visual_mesh): visual_mesh.rotation_degrees.y = 0.0
-
-func execute_stealth_stun(push_dir: Vector3 = Vector3.ZERO) -> void:
-	spawn_procedural_takedown_fx_cloud()
-	
-	current_phase = PatrolPhase.STUNNED
-	current_suspicion_value = 0.0
-	cascade_slide_velocity = push_dir * 9.0
-	
-	# === THE LOOT REGISTRY ACTUATOR LOCK ===
-	# If he hasn't been cleaned out yet, make him immediately search-ready on the floor!
-	if not has_already_been_looted:
-		is_currently_lootable = true
-		print("LOOT SYSTEM: Guard capsule is now an active resource node on the floor.")
-	
-	# --- THE CARTOON EXPLOSION TRIGGER ---
-	# Fires our procedural mesh generators on the exact frame of the takedown!
-	spawn_procedural_takedown_fx_cloud()
-	
-	current_phase = PatrolPhase.STUNNED
-	current_suspicion_value = 0.0
-	cascade_slide_velocity = push_dir * 9.0
-	
-	var cone_node = get_node_or_null("Vision_Cone_Mesh")
-	if is_instance_valid(cone_node):
-		cone_node.visible = false
-	
-	if is_instance_valid(thump_label_3d):
-		thump_label_3d.text = "💤 OUT COLD 💤"
-		thump_label_3d.modulate = Color("#777777")
-		
-	print("STEALTH TAKEDOWN: Tilting master character capsule container onto its side!")
-	rotation_degrees.x = 90.0
-	position.y -= 0.6
-
-# --- LOCOMOTION METHODS ---
+# =============================================================================
+#     4. STANDARD WAYPOINT MOVEMENT TRACKS [PDF: 0.1.18]
+# =============================================================================
 func process_patrol_loop(delta: float) -> void:
 	var vector_to_waypoint: Vector3 = current_target_destination - global_position
 	vector_to_waypoint.y = 0.0
@@ -503,522 +220,288 @@ func process_patrol_loop(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, atan2(-heading_dir.x, -heading_dir.z), turn_speed * delta)
 		move_and_slide()
 
+# === FIXED REFACTOR BREAK: RESTORED MISSING FUNCTION SIGNAL OVERLAY ===
 func process_investigation_loop(delta: float) -> void:
 	var vector_to_noise: Vector3 = noise_target_position - global_position
 	vector_to_noise.y = 0.0
-	if vector_to_noise.length() < 0.6:
-		velocity = Vector3.ZERO
-		phase_timer -= delta
-		if phase_timer <= 0.0: 
-			current_phase = PatrolPhase.MARCHING
-			current_target_destination = point_b if current_target_destination == point_a else point_a
-			
-			# Wipe the alert timers so the bubble dissolves smoothly on patrol resume
-			alert_bubble_display_timer = 0.0
-			# Clear out investigation text banners cleanly when returning to patrol
-			if is_instance_valid(suspicion_label_3d): 
-				suspicion_label_3d.visible = false
-	else:
+	
+	# STAGE 1: Dashing toward your Last Known Position vector spot
+	if vector_to_noise.length() > 0.7 and phase_timer > 0.5:
 		var heading_dir = vector_to_noise.normalized()
-		velocity.x = lerp(velocity.x, (heading_dir * investigation_speed).x, acceleration * delta)
-		velocity.z = lerp(velocity.z, (heading_dir * investigation_speed).z, acceleration * delta)
+		# Run aggressively to the corner where he last saw Eira's shadow!
+		var search_dash_speed: float = investigation_speed * 1.15
+		velocity.x = lerp(velocity.x, (heading_dir * search_dash_speed).x, acceleration * delta)
+		velocity.z = lerp(velocity.z, (heading_dir * search_dash_speed).z, acceleration * delta)
 		rotation.y = lerp_angle(rotation.y, atan2(-heading_dir.x, -heading_dir.z), turn_speed * delta)
 		move_and_slide()
+	else:
+		# STAGE 2: Arrived at LKP! Halt feet and swing body left/right to scan local sectors [PDF: 0.1.50]
+		velocity.x = move_toward(velocity.x, 0.0, acceleration * 2.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, acceleration * 2.0 * delta)
+		move_and_slide()
+		
+		# Procedural scanning look sweep: Wiggles his Y rotation using a clean sine wave arc!
+		var scanning_wiggle_angle: float = sin(Time.get_ticks_msec() * 0.004) * 0.9
+		rotation.y += scanning_wiggle_angle * delta
+		
+		# Count down his alert search state duration clocks
+		phase_timer -= delta
+		
+		# STAGE 3: THE DISAPPOINTED GIVE-UP (WIPES SUSPICION CHANNELS) [PDF: 0.1.50]
+		if phase_timer <= 0.0:
+			current_phase = PatrolPhase.MARCHING
+			current_target_destination = point_a # Go all the way back to default tracks
+			
+			# Flash a cinematic comic dialog bubble over his shoulders! [PDF: 0.1.45]
+			if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+				alert_label.text = "Guess they slipped away..."
+				alert_label.modulate = Color("#33ccff") # Safe relaxed cyan blue
+				alert_label.visible = true
+				alert_anchor.scale = Vector3.ZERO
+				alert_bubble_spring_velocity = 10.0
+				alert_bubble_display_timer = 2.5
+				
+			if is_instance_valid(suspicion_label_3d): 
+				suspicion_label_3d.visible = false
+			print("🕵️ STEALTH: Guard lost tracking, gave up search, and returned to patrol lines.")
+		
+# =============================================================================
+#     4. COMPONENT SIGNAL RECEIVERS & DATA ROUTERS [PDF: 0.1.15, 0.1.16]
+# =============================================================================
+func _on_vision_sensor_updated(suspicion: float) -> void:
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY: return
+	
+	if is_instance_valid(suspicion_label_3d):
+		suspicion_label_3d.visible = true
+		if suspicion >= 100.0:
+			suspicion_label_3d.text = "ALERT: Spotted!"
+			suspicion_label_3d.modulate = Color("#ff3333")
+			
+			if current_phase != PatrolPhase.CHASING and current_phase != PatrolPhase.PANICKING:
+				current_phase = PatrolPhase.CHASING
+		else:
+			# DYNAMIC RECOVERY: If suspicion drops from a full hunt, don't drop out of stance!
+			# Force him to aggressively investigate your last known coordinates [PDF: 0.1.8, 0.1.10]
+			if current_phase == PatrolPhase.CHASING and is_instance_valid(player_ref):
+				noise_target_position = player_ref.global_position
+				current_phase = PatrolPhase.INVESTIGATING
+				phase_timer = 4.5 # Scans your escape sector for 4.5 seconds
+				
+			suspicion_label_3d.text = "Detecting... " + str(int(suspicion)) + "%"
+			suspicion_label_3d.modulate = Color("#ffcc00")
 
-func execute_cascade_trip_fall() -> void:
-	# Force the tripped guard into the stunned phase state loop comically
+func _on_vision_sensor_lost() -> void:
+	if is_instance_valid(suspicion_label_3d): suspicion_label_3d.visible = false
+	
+
+	if current_phase == PatrolPhase.CHASING:
+		current_phase = PatrolPhase.INVESTIGATING
+		if is_instance_valid(player_ref):
+			noise_target_position = player_ref.global_position
+		phase_timer = 4.5
+
+
+
+func _on_posture_damaged(current: int, maximum: int) -> void:
+	print("COMBAT INTEGRATION: Guard took posture hits. Stability: ", current, "/", maximum)
+
+func _on_posture_shattered() -> void:
+	# Triggers his cartoon balance break dizzy wobbles
+	execute_cartoon_dizzy_state()
+
+func _on_posture_recovered() -> void:
+	# === FIXED ZOMBIE RESURRECTION LOOP ===
+	# If he is completely out cold on the floor, block his posture recovery clock 
+	# from forcefully forcing him back up onto his feet!
+	if current_phase == PatrolPhase.STUNNED: 
+		return
+		
+	current_phase = PatrolPhase.MARCHING
+	if is_instance_valid(visual_mesh): 
+		visual_mesh.rotation_degrees.y = 0.0
+
+# =============================================================================
+#     5. COMIC STRIP DIALOG TEXT TIMERS [PDF: 0.1.16, 0.1.17]
+# =============================================================================
+func process_alert_bubble_spring_math(delta: float) -> void:
+	if is_instance_valid(alert_anchor) and is_instance_valid(alert_label):
+		if alert_bubble_display_timer > 0.0:
+			alert_bubble_display_timer -= delta
+			alert_label.visible = true
+			var displacement: float = 1.0 - alert_bubble_spring_scale
+			var spring_force: float = (displacement * 180.0) - (alert_bubble_spring_velocity * 14.0)
+			alert_bubble_spring_velocity += spring_force * delta
+			alert_bubble_spring_scale += alert_bubble_spring_velocity * delta
+			var stretch_x: float = alert_bubble_spring_scale + (alert_bubble_spring_velocity * 0.015)
+			var squash_y: float = alert_bubble_spring_scale - (alert_bubble_spring_velocity * 0.012)
+			alert_anchor.scale = Vector3(stretch_x, squash_y, alert_bubble_spring_scale)
+			if alert_bubble_display_timer <= 0.4:
+				alert_label.modulate.a = move_toward(alert_label.modulate.a, 0.0, 2.5 * delta)
+		else:
+			alert_label.visible = false
+			alert_bubble_spring_scale = 0.0
+			alert_bubble_spring_velocity = 0.0
+
+func investigate_noise(noise_pos: Vector3) -> void:
+	if current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.STUNNED: return
+	var dialog_bubble_text: String = "HUH? What's that noise?"
+	
+	if is_instance_valid(vision_sensor) and vision_sensor.current_suspicion > 45.0:
+		dialog_bubble_text = "WHO'S THERE?! I know someone is hiding!"
+		
+	if current_phase != PatrolPhase.INVESTIGATING:
+		noise_target_position = noise_pos
+		current_phase = PatrolPhase.INVESTIGATING
+		phase_timer = 3.0
+		
+	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+		alert_label.text = dialog_bubble_text
+		alert_label.modulate = Color.BLACK
+		alert_label.modulate.a = 1.0
+		alert_anchor.scale = Vector3.ZERO
+		alert_bubble_spring_velocity = 12.0 
+		alert_bubble_spring_scale = 0.0
+		alert_bubble_display_timer = 2.8
+
+# =============================================================================
+#     7. CARTOON INCAPACITATIONS & MOVIE RECOVERIES [PDF: 0.1.19, 0.1.20]
+# =============================================================================
+func execute_cartoon_dizzy_state() -> void:
+	current_phase = PatrolPhase.DIZZY
+	dizzy_timer = dizzy_duration
+	velocity = Vector3.ZERO
+	if is_instance_valid(visual_mesh):
+		var w_tween = create_tween().set_loops(int(dizzy_duration / 0.3))
+		w_tween.tween_property(visual_mesh, "rotation_degrees:y", 15.0, 0.15)
+		w_tween.tween_property(visual_mesh, "rotation_degrees:y", -15.0, 0.15)
+
+func process_dizzy_state(delta: float) -> void:
+	dizzy_timer -= delta
+	if is_instance_valid(player_ref) and player_ref.is_attacking and global_position.distance_to(player_ref.global_position) <= 2.2:
+		execute_stealth_stun()
+		return
+	if dizzy_timer <= 0.0:
+		if is_instance_valid(health_posture): health_posture.recover_balance()
+
+func execute_stealth_stun(_push_dir: Vector3 = Vector3.ZERO) -> void:
+	if current_phase == PatrolPhase.STUNNED: return
+	
 	current_phase = PatrolPhase.STUNNED
 	velocity = Vector3.ZERO
-	current_suspicion_value = 0.0
+	is_vulnerable_to_counter = false
 	
-	if is_instance_valid(thump_label_3d):
-		thump_label_3d.visible = true
-		thump_label_3d.text = "💥 WHOOPS! 💥"
-		thump_label_3d.modulate = Color("#ff3333")
+	# Open his pocket grids so Eira can scavenge rare tool supplies from his body!
+	if not has_already_been_looted: 
+		is_currently_lootable = true
 		
-	# Comedic flat-fall cartoon animation: Tilt his mesh flat opposite direction!
+	spawn_procedural_takedown_fx_cloud()
+	
+	# Turn off his vision tracking cone entirely so he is blind while asleep
+	if is_instance_valid(vision_sensor):
+		vision_sensor.current_suspicion = 0.0
+		vision_sensor.set_physics_process(false)
+	
+	# Drop his capsule mesh flat onto the floor bricks permanently
+	rotation_degrees.x = 90.0
+	position.y -= 0.6
+	
+	print("💤 PERMANENT STASIS: ", name, " is out cold. He will stay asleep permanently.")
+
+func execute_cascade_trip_fall() -> void:
+	current_phase = PatrolPhase.STUNNED
+	velocity = Vector3.ZERO
 	if is_instance_valid(visual_mesh):
 		visual_mesh.rotation_degrees.x = -90.0
 		visual_mesh.position.y = -0.6
-		
-	# Automatically wake him back up and reset his posture nodes after 3 seconds
 	get_tree().create_timer(3.0).timeout.connect(func():
-		if current_phase == PatrolPhase.STUNNED and is_instance_valid(thump_label_3d) and thump_label_3d.text == "💥 WHOOPS! 💥":
-			print("AI LOCOMOTION: Tripped guard scrambled back onto his feet.")
+		if current_phase == PatrolPhase.STUNNED:
 			current_phase = PatrolPhase.MARCHING
-			current_thump_posture = max_thump_posture
-			thump_label_3d.visible = false
+			if is_instance_valid(health_posture): health_posture.recover_balance()
 			if is_instance_valid(visual_mesh):
 				visual_mesh.rotation_degrees.x = 0.0
 				visual_mesh.position.y = original_mesh_y
 	)
 
-func execute_player_capture() -> void:
-	current_suspicion_value = 0.0
-	current_phase = PatrolPhase.MARCHING
-	current_target_destination = point_a
-	
-	# Wake up his sightlines and reset rotation transforms on player reload
-	var cone_node = get_node_or_null("Vision_Cone_Mesh")
-	if is_instance_valid(cone_node):
-		cone_node.visible = true
-		
-	if is_instance_valid(visual_mesh):
-		visual_mesh.rotation_degrees.x = 0.0
-		visual_mesh.position.y = original_mesh_y
-		
-	rotation_degrees.x = 0.0 # Reset backup parent rotations too
-	
-	player_ref.trigger_capture_respawn()
-	
-func process_stunned_recovery(delta: float) -> void:
-	phase_timer -= delta
-	if phase_timer <= 0.0:
-		print("HUNTER AI: Recovery timer expired. Resuming march routines.")
-		current_phase = PatrolPhase.MARCHING
-		# RESET STABILITY HERE:
-		current_stability = max_stability 
-		
-		# Reset his structural capsule body back upright perfectly
-		rotation_degrees.x = 0.0
-		position.y += 0.6
-		
-		if is_instance_valid(thump_label_3d):
-			thump_label_3d.visible = false
-		var cone_node = get_node_or_null("Vision_Cone_Mesh")
-		if is_instance_valid(cone_node):
-			cone_node.visible = true
-
 func execute_disarm_parry_drop() -> void:
-	if is_frantically_disarmed or current_phase == PatrolPhase.STUNNED: return 
-	
+	if is_frantically_disarmed or current_phase == PatrolPhase.STUNNED: return
 	is_frantically_disarmed = true
 	is_currently_armed = false
-	current_phase = PatrolPhase.PANICKING
-	velocity = Vector3.ZERO
-	
-	# 1. Hide the weapon currently bound to his hand socket safely
-	if is_instance_valid(hand_weapon_mesh):
-		hand_weapon_mesh.visible = false
+	if current_phase != PatrolPhase.SLIPPING:
+		current_phase = PatrolPhase.PANICKING
+		velocity = Vector3.ZERO
 		
-	# 2. Spawn the comical spinning physics replica into the world map
+	if is_instance_valid(hand_weapon_mesh): hand_weapon_mesh.visible = false
 	if dropped_weapon_blueprint:
 		var spawned_sword = dropped_weapon_blueprint.instantiate() as RigidBody3D
 		get_tree().root.add_child(spawned_sword)
-		
-		# Align starting positions perfectly to match his hand anchor coordinates
 		spawned_sword.global_position = hand_weapon_mesh.global_position
 		spawned_sword.global_basis = hand_weapon_mesh.global_basis
 		active_dropped_weapon_instance = spawned_sword
-		
-		# Apply a cartoonish upward & backward explosion impulse vector!
 		var escape_direction: Vector3 = (global_transform.basis.z + Vector3(0.0, 1.2, 0.0)).normalized()
 		var spin_torque: Vector3 = Vector3(randf_range(8.0, 20.0), randf_range(8.0, 20.0), 0.0)
-		
 		spawned_sword.apply_central_impulse(escape_direction * 9.0)
 		spawned_sword.apply_torque_impulse(spin_torque)
 		
-	# 3. Pop the elastic comic-book text bubble!
 	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
-		alert_label.text = "😱 MY SWORD?! 😱"
+		alert_label.text = "MY SWORD?!"
 		alert_anchor.visible = true
 		alert_label.visible = true
 		alert_label.modulate.a = 1.0
-		
-		# Quick comic bounce effect using a neat local spring tween layout
 		var pop_tween = create_tween()
 		alert_anchor.scale = Vector3.ZERO
-		alert_bubble_spring_scale = 1.0 # Set safety flags for the background math
+		alert_bubble_spring_scale = 1.0 
 		alert_bubble_display_timer = 3.0
 		pop_tween.tween_property(alert_anchor, "scale", Vector3(1.3, 1.3, 1.3), 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		pop_tween.tween_property(alert_anchor, "scale", Vector3(1.0, 1.0, 1.0), 0.1)
 
 func process_weapon_scramble_panic_loop(delta: float) -> void:
-	# Real-time path tracker targeting the actual physics body rolling across the map tiles!
 	if is_instance_valid(active_dropped_weapon_instance):
 		var target_sword_position: Vector3 = active_dropped_weapon_instance.global_position
 		var vector_to_sword: Vector3 = target_sword_position - global_position
 		vector_to_sword.y = 0.0
-		
 		if vector_to_sword.length() < 0.7:
-			print("AI MECHANICS: Scramble success! Guard re-armed hand slots.")
 			velocity = Vector3.ZERO
-			
-			# Kill the rolling projectile and reveal his hand blade back into visual matrix rows
 			active_dropped_weapon_instance.queue_free()
-			if is_instance_valid(hand_weapon_mesh):
-				hand_weapon_mesh.visible = true
-				
+			if is_instance_valid(hand_weapon_mesh): hand_weapon_mesh.visible = true
 			is_currently_armed = true
 			is_frantically_disarmed = false
 			current_phase = PatrolPhase.MARCHING
 			current_target_destination = point_a
 		else:
-			# Frantic run steering math loops
 			var heading_dir = vector_to_sword.normalized()
-			var panic_speed: float = movement_speed * 1.4 # High speed sprint panic pacing
+			var panic_speed: float = movement_speed * 1.4 
 			velocity.x = lerp(velocity.x, (heading_dir * panic_speed).x, acceleration * delta)
 			velocity.z = lerp(velocity.z, (heading_dir * panic_speed).z, acceleration * delta)
 			rotation.y = lerp_angle(rotation.y, atan2(-heading_dir.x, -heading_dir.z), turn_speed * 1.6 * delta)
 			move_and_slide()
-			
-			
-func spawn_procedural_takedown_fx_cloud() -> void:
-	print("VISUAL ENGINE: Forcing CPU-driven cartoon smoke puffs onto helmet...")
-	
-	# 1. CREATE THE STABLE CPU EMITTER CONTAINERS
-	var fx_root_node: Node3D = Node3D.new()
-	var dust_emitter: CPUParticles3D = CPUParticles3D.new()
-	var star_emitter: CPUParticles3D = CPUParticles3D.new()
-	
-	# Snap the effects container precisely to the guard's shoulders (0.8 meters up)
-	get_tree().root.add_child(fx_root_node)
-	fx_root_node.global_position = global_position + Vector3(0.0, 0.8, 0.0)
-	
-	fx_root_node.add_child(dust_emitter)
-	fx_root_node.add_child(star_emitter)
-	
-	# =========================================================================
-	# CONTAINER A: TUNING THE FLUFFY CARTOON DUST PUFF EMITTER
-	# =========================================================================
-	dust_emitter.one_shot = true
-	dust_emitter.lifetime = 0.35
-	dust_emitter.explosiveness = 1.0
-	dust_emitter.amount = 12
-	
-	# CPUParticles3D settings are assigned directly to the node properties!
-	dust_emitter.gravity = Vector3.ZERO # Stops the cloud from plunging into the floor tiles
-	dust_emitter.direction = Vector3(0.0, 1.0, 0.0)
-	dust_emitter.spread = 180.0 # Blows outward into a perfect rounded sphere explosion
-	dust_emitter.initial_velocity_min = 4.0
-	dust_emitter.initial_velocity_max = 4.0
-	dust_emitter.damping_min = 7.0
-	dust_emitter.damping_max = 7.0
-	
-	# Procedural scale expansion over time
-	dust_emitter.scale_amount_min = 1.0
-	dust_emitter.scale_amount_max = 1.8
-	
-	# Generate the visual mesh shape (Fluffy billboard smoke circle cards)
-	var cloud_quad_mesh: QuadMesh = QuadMesh.new()
-	cloud_quad_mesh.size = Vector2(0.6, 0.6)
-	
-	var dust_draw_mat: StandardMaterial3D = StandardMaterial3D.new()
-	dust_draw_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
-	dust_draw_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.85) # High-visibility thick white
-	dust_draw_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
-	dust_draw_mat.billboard_mode = StandardMaterial3D.BILLBOARD_PARTICLES
-	
-	# THE CELL-SHADED BLACK OUTLINE: Chains a bold black border line around the smoke pieces
-	var outline_mat: StandardMaterial3D = StandardMaterial3D.new()
-	outline_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
-	outline_mat.albedo_color = Color(0.0, 0.0, 0.0, 1.0)
-	outline_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
-	outline_mat.billboard_mode = StandardMaterial3D.BILLBOARD_PARTICLES
-	outline_mat.grow = true
-	outline_mat.grow_amount = 0.04 # 4cm thick ink line width
-	dust_draw_mat.next_pass = outline_mat
-	
-	cloud_quad_mesh.material = dust_draw_mat
-	dust_emitter.mesh = cloud_quad_mesh
-	
-	# =========================================================================
-	# CONTAINER B: TUNING THE SPINNING DIZZY STARS EMITTER
-	# =========================================================================
-	star_emitter.one_shot = true
-	star_emitter.lifetime = 1.0
-	star_emitter.explosiveness = 0.8
-	star_emitter.amount = 4
-	
-	star_emitter.gravity = Vector3.ZERO
-	star_emitter.spread = 0.0
-	star_emitter.orbit_velocity_min = 3.0 # The vector that forces the stars to circle his head
-	star_emitter.orbit_velocity_max = 3.0
-	
-	var star_mesh: PrismMesh = PrismMesh.new()
-	star_mesh.size = Vector3(0.12, 0.25, 0.12)
-	
-	var star_draw_mat: StandardMaterial3D = StandardMaterial3D.new()
-	star_draw_mat.albedo_color = Color("#ffff00") # Neon golden yellow!
-	star_draw_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
-	star_mesh.material = star_draw_mat
-	star_emitter.mesh = star_mesh
-	
-	# =========================================================================
-	# RE-ARM ACTUATORS & AUTO-DESTRUCT RECOVERY
-	# =========================================================================
-	dust_emitter.emitting = true
-	star_emitter.emitting = true
-	
-	# Automatically clean up the procedural system once the animation wraps up
-	get_tree().create_timer(1.2).timeout.connect(func():
-		fx_root_node.queue_free()
-	)
 
-
-# Place inside the AI's _physics_process or vision loop
-func check_for_fallen_allies() -> void:
-	for body in get_tree().get_nodes_in_group("UnconsciousEnemy"):
-		if global_position.distance_to(body.global_position) < vision_range:
-			# Simple line-of-sight check
-			var space_state = get_world_3d().direct_space_state
-			var result = space_state.intersect_ray(PhysicsRayQueryParameters3D.create(global_position, body.global_position))
-			
-			if result and result["collider"] == body:
-				print("AI SENSORS: Found an ally! Investigating...")
-				current_phase = PatrolPhase.INVESTIGATING
-				noise_target_position = body.global_position
-
-func construct_dynamic_clipping_vision_mesh() -> void:
-	if not is_instance_valid(dynamic_cone_mesh_instance): return
-	
-	# === THE UNCONSCIOUS BLINDFOLD SHUTTER ===
-	# If the guard is knocked out cold, stunned, dizzy, or tied up in a bola, 
-	# instantly clear his vision mesh surfaces and exit the function early!
-	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE or current_phase == PatrolPhase.SLIPPING:
-		if dynamic_cone_mesh_instance.mesh:
-			(dynamic_cone_mesh_instance.mesh as ImmediateMesh).clear_surfaces()
-		return
-		
-	# Fetch the pre-allocated immediate mesh resource container from the node property slot
-	var immediate_mesh: ImmediateMesh = dynamic_cone_mesh_instance.mesh as ImmediateMesh
-	if not immediate_mesh: return
-	
-	
-	immediate_mesh.clear_surfaces()
-	
-	var space_state = get_world_3d().direct_space_state
-	var eye_origin: Vector3 = global_position + Vector3(0.0, 0.1, 0.0)
-	
-	var perimeter_vertex_points: Array[Vector3] = []
-	var angle_increment_step: float = (vision_angle * 2.0) / ray_density_multiplier
-	
-	# --- HORIZONTAL RADIAL RAY-CAST SWEEP CONSTRUCTOR ---
-	for i in range(ray_density_multiplier + 1):
-		var current_ray_angle_deg: float = -vision_angle + (i * angle_increment_step)
-		var current_ray_angle_rad: float = deg_to_rad(current_ray_angle_deg)
-		
-		var local_ray_dir: Vector3 = Vector3(sin(current_ray_angle_rad), 0.0, -cos(current_ray_angle_rad))
-		var global_ray_target_dir: Vector3 = (global_transform.basis * local_ray_dir).normalized()
-		var optimal_reach_destination: Vector3 = eye_origin + (global_ray_target_dir * vision_range)
-		
-		var geometry_ray_query = PhysicsRayQueryParameters3D.create(eye_origin, optimal_reach_destination)
-		
-		# Isolated inline physics exclusions safely bypassing memory pointer overlaps
-		var current_smudge = get_tree().get_first_node_in_group("CompanionGroup")
-		if is_instance_valid(current_smudge):
-			geometry_ray_query.exclude = [self.get_rid(), current_smudge.get_rid()]
-		else:
-			geometry_ray_query.exclude = [self.get_rid()]
-			
-		var contact_data = space_state.intersect_ray(geometry_ray_query)
-		if not contact_data.is_empty():
-			var local_collision_offset: Vector3 = to_local(contact_data["position"])
-			local_collision_offset.y = 0.1 # Keep it flattened to floor planes
-			perimeter_vertex_points.append(local_collision_offset)
-		else:
-			var local_reach_offset: Vector3 = to_local(optimal_reach_destination)
-			local_reach_offset.y = 0.1
-			perimeter_vertex_points.append(local_reach_offset)
-			
-	# --- GODOT 4.7 UPGRADED PRIMITIVE SURFACE DRAW STREAM ---
-	# Uses the modern explicit material pipeline to populate primitive triangles safely
-	immediate_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	
-	for i in range(perimeter_vertex_points.size() - 1):
-		# Triangle Vertex 1: The guard's center local origin position point
-		immediate_mesh.surface_add_vertex(Vector3(0, 0.1, 0))
-		# Triangle Vertex 2: Current ray slice edge point
-		immediate_mesh.surface_add_vertex(perimeter_vertex_points[i])
-		# Triangle Vertex 3: Next sequential ray slice edge point (bridges the gap!)
-		immediate_mesh.surface_add_vertex(perimeter_vertex_points[i + 1])
-		
-	immediate_mesh.surface_end()
-	dynamic_cone_mesh_instance.mesh = immediate_mesh
-
-
-func clear_procedural_vision_mesh() -> void:
-	if is_instance_valid(dynamic_cone_mesh_instance):
-		dynamic_cone_mesh_instance.mesh = null
-		
-func execute_long_range_bola_snag() -> void:
-	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.BOLA_STRUGGLE: return
-	
-	# Fall flat layout onto the floor tiles but stay conscious!
-	current_phase = PatrolPhase.BOLA_STRUGGLE
-	bola_struggle_timer = 4.0 # Give the player exactly 4 seconds to sprint over and finish him!
-	velocity = Vector3.ZERO
-	
-	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
-		alert_label.text = "⛓️ CRAP! BOLA TRAP! ⛓️"
-		alert_label.modulate = Color("#ffcc00") # High caution amber
-		alert_anchor.visible = true
-		alert_label.visible = true
-		alert_label.modulate.a = 1.0
-
-func process_bola_entanglement_struggle_loop(delta: float) -> void:
-	if bola_struggle_timer > 0.0:
-		bola_struggle_timer -= delta
-		
-		# Comedic panic struggle rattle: Make his capsule wobble while tangled up!
-		# (Simulates trying to break free from Viking engineering cords!)
-		rotation_degrees.z = sin(Time.get_ticks_msec() * 0.04) * 25.0
-		
-		# Display a countdown warning text overhead so the player tracks the window
-		if is_instance_valid(alert_label):
-			alert_label.text = "⏳ STEALTH LIMIT: " + str(snapped(bola_struggle_timer, 0.1)) + "s ⏳"
-	else:
-		# TIMEOUT BREAKPOINT: The player failed to finish him off! Sound the absolute alarm!
-		rotation_degrees.z = 0.0 # Reset his orientation angle
-		current_suspicion_value = 100.0
-		current_phase = PatrolPhase.MARCHING
-		investigate_noise(player_ref.global_position if is_instance_valid(player_ref) else global_position)
-		
-		if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
-			alert_label.text = "🚨 INTRUDER ALERT!! 🚨"
-			alert_label.modulate = Color("#ff3333")
-
-
-func process_tactical_stealth_takedown_radar() -> void:
-	if not is_instance_valid(player_ref) or not is_instance_valid(takedown_label_3d): return
-	
-	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE:
-		takedown_label_3d.visible = false
-		return
-
-	var player_is_sneaking: bool = player_ref.get("is_crouching") if "is_crouching" in player_ref else false
-	
-	# THE DEFINITIVE VISIBILITY SHUTTER: If Eira is standing upright, KILL THE LABEL INSTANTLY!
-	if not player_is_sneaking:
-		takedown_label_3d.visible = false
-		return
-
-	var distance_to_player: float = global_position.distance_to(player_ref.global_position)
-	
-	# --- PHASE 1: CHECK PROXIMITY STEALTH FOOTPRINT ---
-	if distance_to_player <= 2.3:
-		var guard_forward: Vector3 = -global_transform.basis.z.normalized()
-		var direction_to_player: Vector3 = (player_ref.global_position - global_position).normalized()
-		var angle_dot: float = guard_forward.dot(direction_to_player)
-		
-		if angle_dot < 0.35 and (current_phase == PatrolPhase.MARCHING or current_phase == PatrolPhase.INVESTIGATING):
-			
-			# --- PHASE 2: MUTUAL WITNESS RADAR (SPIDER-MAN ENGINE) ---
-			var is_any_other_guard_watching_me: bool = false
-			var all_guards = get_tree().get_nodes_in_group("EnemyGroup")
-			
-			for witness in all_guards:
-				if is_instance_valid(witness) and witness != self and "current_phase" in witness:
-					if witness.current_phase == PatrolPhase.STUNNED or witness.current_phase == PatrolPhase.DIZZY or witness.current_phase == PatrolPhase.PANICKING:
-						continue
-						
-					var distance_to_me: float = witness.global_position.distance_to(global_position)
-					if distance_to_me <= witness.vision_range:
-						var witness_forward: Vector3 = -witness.global_transform.basis.z.normalized()
-						var dir_to_me: Vector3 = (global_position - witness.global_position).normalized()
-						var witness_angle: float = rad_to_deg(witness_forward.angle_to(dir_to_me))
-						
-						if witness_angle <= witness.vision_angle:
-							var space_state = get_world_3d().direct_space_state
-							var eye_level: Vector3 = witness.global_position + Vector3(0.0, 0.5, 0.0)
-							var target_level: Vector3 = global_position + Vector3(0.0, 0.5, 0.0)
-							var query = PhysicsRayQueryParameters3D.create(eye_level, target_level)
-							query.exclude = [witness.get_rid(), self.get_rid()]
-							
-							var ray_hit = space_state.intersect_ray(query)
-							if ray_hit.is_empty() or ray_hit["collider"] == self:
-								is_any_other_guard_watching_me = true
-								break
-								
-			# --- PHASE 3: DISTRIBUTE STATE COMMANDS ---
-			takedown_label_3d.visible = true
-			
-			var connected_pads = Input.get_connected_joypads()
-			var is_gamepad: bool = connected_pads.size() > 0 and Input.is_joy_known(connected_pads)
-			var attack_prompt: String = "🔵 [Button East]" if is_gamepad else "[X]"
-			
-			var smudge_node = get_tree().get_first_node_in_group("CompanionGroup")
-			
-			if is_any_other_guard_watching_me:
-				takedown_label_3d.text = attack_prompt + " 🚨 DANGER: WATCHED! 🚨"
-				takedown_label_3d.modulate = Color("#ff3333")
-				if is_instance_valid(smudge_node) and smudge_node.has_method("execute_smudge_cower_animation"):
-					smudge_node.execute_smudge_cower_animation(global_position)
-			else:
-				takedown_label_3d.text = attack_prompt + " Stealth Takedown [SAFE]"
-				takedown_label_3d.modulate = Color("#33ccff")
-				if is_instance_valid(smudge_node) and smudge_node.has_method("execute_smudge_point_animation"):
-					smudge_node.execute_smudge_point_animation(global_position)
-			return
-
-	takedown_label_3d.visible = false
-
+# =============================================================================
+#     8. SLIME HAZARD INTERFACE TASKS [PDF: 0.1.23, 0.1.24]
+# =============================================================================
 func execute_cascade_stumble_fall() -> void:
-	# Safety Gate: Prevent double-tripping if he clips multiple puddle boundaries simultaneously
-	if current_phase == PatrolPhase.SLIPPING or current_phase == PatrolPhase.STUNNED: 
-		return
-		
+	if current_phase == PatrolPhase.SLIPPING or current_phase == PatrolPhase.STUNNED: return
 	current_phase = PatrolPhase.SLIPPING
-	is_slipping_in_slime = true
-	weapon_dropped_this_slip = false
-	
-	# === STAGE 1: THE CARTOON ON-THE-SPOT SCRAMBLE ===
+	blackboard.set_value("is_slipped", true)
+	blackboard.set_value("slip_elapsed", 0.0)
+	blackboard.set_value("slip_weapon_dropped", false)
 	velocity = Vector3.ZERO
 	global_transform.basis = global_transform.basis.orthonormalized()
-	
-	print("SLIME HAZARD: Guard lost his footing! Running on the spot.")
-	
-	# Pop your high-utility spring dialogue text bubble overhead automatically!
 	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
-		alert_label.text = "ð  µ WHOA! TOO SLIPPERY!! ð  µ"
+		alert_label.text = "WHOA! TOO SLIPPERY!!"
 		alert_anchor.visible = true
 		alert_label.visible = true
 		alert_label.modulate.a = 1.0
-		alert_label.modulate = Color("#33ccff") # Neon cyan theme
+		alert_label.modulate = Color("#33ccff") 
 		alert_bubble_spring_scale = 1.0
-		alert_bubble_spring_velocity = 14.0 # Heavy spring pop kick-start impulse
+		alert_bubble_spring_velocity = 14.0 
 		alert_bubble_display_timer = 2.0
-		
-	if is_instance_valid(thump_label_3d):
-		thump_label_3d.visible = true
-		thump_label_3d.text = "🔄 SCRAMBLING! 🔄"
-		thump_label_3d.modulate = Color("#33ccff")
-		
-	# Frantic run on the spot for exactly 1.4 seconds before sliding down
-	get_tree().create_timer(1.4).timeout.connect(func():
-		_execute_slime_forward_launch_slide()
-	)
-		
 
-func _execute_slime_forward_launch_slide() -> void:
-	if current_phase != PatrolPhase.SLIPPING: return
-	print("SLIME HAZARD: Scramble concluded. Launching guard forward into flat face-plant dive.")
-	
-	weapon_dropped_this_slip = true
-	
-	# === STAGE 2: THE FORWARD CARTOON LAUNCH IMPULSE ===
-	var forward_heading_vector: Vector3 = -global_transform.basis.z.normalized()
-	velocity.x = forward_heading_vector.x * 12.0 # Launch forward a meter or two!
-	velocity.z = forward_heading_vector.z * 12.0
-	velocity.y = 0.0 # Keep him flat along the ground floor
-
-	
-	# === STAGE 3: THE DISARMING LOSS ===
-	if has_method("execute_disarm_parry_drop"):
-		execute_disarm_parry_drop()
-		if is_instance_valid(alert_label):
-			alert_label.text = "😱 NO! MY BLADE!! 😱"
-			alert_label.modulate = Color("#ff3333")
-	
-	if is_instance_valid(thump_label_3d):
-		thump_label_3d.text = "💥 FACE-PLANT! 💥"
-		thump_label_3d.modulate = Color("#ff3333")
-		
+func _on_slip_faceplant() -> void:
+	if is_instance_valid(alert_label):
+		alert_label.text = "NO! MY BLADE!!"
+		alert_label.modulate = Color("#ff3333")
 	if is_instance_valid(visual_mesh):
-		visual_mesh.rotation_degrees.x = -90.0
 		visual_mesh.position.y = -0.6
-		
-	# Trigger camera screen-shake impact thud
 	var active_cam = get_viewport().get_camera_3d()
 	if is_instance_valid(active_cam) and active_cam.has_method("get_pcam"):
 		var pcam = active_cam.get_pcam()
@@ -1026,37 +509,346 @@ func _execute_slime_forward_launch_slide() -> void:
 			pcam.set_shake_frequency(15.0)
 			pcam.set_shake_amplitude(0.25)
 			get_tree().create_timer(0.3).timeout.connect(func(): pcam.set_shake_amplitude(0.0))
-
 	if is_instance_valid(dizzy_stars_halo) and dizzy_stars_halo.has_method("start_dizzy_halo_sequence"):
 		dizzy_stars_halo.start_dizzy_halo_sequence()
-		var fade_timer_tween = create_tween().set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
-		fade_timer_tween.tween_interval(2.4)
-		fade_timer_tween.tween_property(dizzy_stars_halo, "scale", Vector3.ZERO, 0.6)
-		
-	# Hold them flat on the floor for 3 full seconds before recovery
-	get_tree().create_timer(3.0).timeout.connect(func():
-		_execute_slime_recovery_getup()
-	)
-
-func _execute_slime_recovery_getup() -> void:
-	if current_phase != PatrolPhase.SLIPPING: return
-	print("SLIME HAZARD: Stun window closed. Guard is standing back up completely unarmed.")
+	var fade_timer_tween = create_tween().set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+	fade_timer_tween.tween_interval(2.4)
+	fade_timer_tween.tween_property(dizzy_stars_halo, "scale", Vector3.ZERO, 0.6)
 	
-	if is_instance_valid(thump_label_3d): 
-		thump_label_3d.visible = false
-	if is_instance_valid(alert_label): 
-		alert_label.visible = false
-		alert_bubble_display_timer = 0.0
-		
-	# Smoothly pop his visible character model container back upright perfectly
+func _on_slip_recovered() -> void:
+	if is_instance_valid(alert_label): alert_label.visible = false
+	alert_bubble_display_timer = 0.0
 	if is_instance_valid(visual_mesh):
-		visual_mesh.rotation_degrees.x = 0.0
-		visual_mesh.position.y = 0.0 # FIXED: Reset local Y translation so he isn't floating or buried!
-
+		visual_mesh.position.y = 0.0 
 	if is_instance_valid(dizzy_stars_halo) and dizzy_stars_halo.has_method("stop_dizzy_halo_sequence"):
 		dizzy_stars_halo.stop_dizzy_halo_sequence()
-	# Reset his locomotion state parameters entirely so he resumes normal patrolling
-	is_slipping_in_slime = false
-	weapon_dropped_this_slip = false # Clear tracking flag for his next encounter!
 	current_phase = PatrolPhase.MARCHING
 	current_target_destination = point_a
+
+func execute_long_range_bola_snag() -> void:
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.BOLA_STRUGGLE: return
+	current_phase = PatrolPhase.BOLA_STRUGGLE
+	bola_struggle_timer = 4.0 
+	velocity = Vector3.ZERO
+	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+		alert_label.text = "CRAP! BOLA TRAP!"
+		alert_label.modulate = Color("#ffcc00") 
+		alert_anchor.visible = true
+		alert_label.visible = true
+		alert_label.modulate.a = 1.0
+
+# =============================================================================
+#     9. COGNITIVE SPIDER-MAN WITNESS RADAR (DOT PRODUCT OPTIMIZED) [INDEX_0.1.25]
+# =============================================================================
+func process_tactical_stealth_takedown_radar() -> void:
+	if not is_instance_valid(player_ref) or not is_instance_valid(takedown_label_3d): return
+	if current_phase == PatrolPhase.STUNNED or current_phase == PatrolPhase.DIZZY or current_phase == PatrolPhase.BOLA_STRUGGLE:
+		takedown_label_3d.visible = false
+		return
+	var player_is_sneaking: bool = player_ref.get("is_crouching") if "is_crouching" in player_ref else false
+	if not player_is_sneaking:
+		takedown_label_3d.visible = false
+		return
+	var distance_to_player: float = global_position.distance_to(player_ref.global_position)
+	if distance_to_player <= 2.3:
+		var guard_forward: Vector3 = -global_transform.basis.z.normalized()
+		var direction_to_player: Vector3 = (player_ref.global_position - global_position).normalized()
+		var angle_dot: float = guard_forward.dot(direction_to_player)
+		if angle_dot < 0.35 and (current_phase == PatrolPhase.MARCHING or current_phase == PatrolPhase.INVESTIGATING):
+			var is_any_other_guard_watching_me: bool = false
+			var all_guards = get_tree().get_nodes_in_group("EnemyGroup")
+			for witness in all_guards:
+				if is_instance_valid(witness) and witness != self and "current_phase" in witness and witness.has_node("VisionSensor3D"):
+					if witness.current_phase == PatrolPhase.STUNNED or witness.current_phase == PatrolPhase.DIZZY or witness.current_phase == PatrolPhase.PANICKING: continue
+					var distance_to_me: float = witness.global_position.distance_to(global_position)
+					var w_sensor = witness.vision_sensor
+					if distance_to_me <= w_sensor.vision_range:
+						var witness_forward: Vector3 = -witness.global_transform.basis.z.normalized()
+						var dir_to_me: Vector3 = (global_position - witness.global_position).normalized()
+						var witness_angle: float = rad_to_deg(witness_forward.angle_to(dir_to_me))
+						if witness_angle <= witness.vision_sensor.vision_angle:
+							var space_state = get_world_3d().direct_space_state
+							var eye_level: Vector3 = witness.global_position + Vector3(0.0, 0.5, 0.0)
+							var target_level: Vector3 = global_position + Vector3(0.0, 0.5, 0.0)
+							var query = PhysicsRayQueryParameters3D.create(eye_level, target_level)
+							query.exclude = [witness.get_rid(), self.get_rid()]
+							var ray_hit = space_state.intersect_ray(query)
+							if ray_hit.is_empty() or ray_hit["collider"] == self:
+								is_any_other_guard_watching_me = true
+								break
+			takedown_label_3d.visible = true
+			var connected_pads = Input.get_connected_joypads()
+			var is_gamepad: bool = !connected_pads.is_empty() and Input.is_joy_known(connected_pads[0])
+			var attack_prompt: String = "[Button East]" if is_gamepad else "[X]"
+			if is_any_other_guard_watching_me:
+				takedown_label_3d.text = attack_prompt + " DANGER: WATCHED!"
+				takedown_label_3d.modulate = Color("#ff3333")
+			else:
+				takedown_label_3d.text = attack_prompt + " Stealth Takedown [SAFE]"
+				takedown_label_3d.modulate = Color("#33ccff")
+			return
+	takedown_label_3d.visible = false
+
+# =============================================================================
+#     10. VISUAL VFX PARTICLES GENERATOR 
+# =============================================================================
+func spawn_procedural_takedown_fx_cloud() -> void:
+	var fx_root_node: Node3D = Node3D.new()
+	var dust_emitter: CPUParticles3D = CPUParticles3D.new()
+	var star_emitter: CPUParticles3D = CPUParticles3D.new()
+	get_tree().root.add_child(fx_root_node)
+	fx_root_node.global_position = global_position + Vector3(0.0, 0.8, 0.0)
+	fx_root_node.add_child(dust_emitter)
+	fx_root_node.add_child(star_emitter)
+	
+	dust_emitter.one_shot = true
+	dust_emitter.lifetime = 0.35
+	dust_emitter.explosiveness = 1.0
+	dust_emitter.amount = 12
+	dust_emitter.gravity = Vector3.ZERO 
+	dust_emitter.direction = Vector3(0.0, 1.0, 0.0)
+	dust_emitter.spread = 180.0 
+	dust_emitter.initial_velocity_min = 4.0
+	dust_emitter.initial_velocity_max = 4.0
+	dust_emitter.damping_min = 7.0
+	dust_emitter.damping_max = 7.0
+	dust_emitter.scale_amount_min = 1.0
+	dust_emitter.scale_amount_max = 1.8
+	var cloud_quad_mesh: QuadMesh = QuadMesh.new()
+	cloud_quad_mesh.size = Vector2(0.6, 0.6)
+	var dust_draw_mat: StandardMaterial3D = StandardMaterial3D.new()
+	dust_draw_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
+	dust_draw_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.85) 
+	dust_draw_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+	dust_draw_mat.billboard_mode = StandardMaterial3D.BILLBOARD_PARTICLES
+	var outline_mat: StandardMaterial3D = StandardMaterial3D.new()
+	outline_mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
+	outline_mat.albedo_color = Color(0.0, 0.0, 0.0, 1.0)
+	outline_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+	outline_mat.billboard_mode = StandardMaterial3D.BILLBOARD_PARTICLES
+	outline_mat.grow = true
+	outline_mat.grow_amount = 0.04 
+	dust_draw_mat.next_pass = outline_mat
+	cloud_quad_mesh.material = dust_draw_mat
+	dust_emitter.mesh = cloud_quad_mesh
+	
+	star_emitter.one_shot = true
+	star_emitter.lifetime = 1.0
+	star_emitter.explosiveness = 0.8
+	star_emitter.amount = 4
+	star_emitter.gravity = Vector3.ZERO
+	star_emitter.spread = 0.0
+	star_emitter.orbit_velocity_min = 3.0 
+	star_emitter.orbit_velocity_max = 3.0
+	var star_mesh: PrismMesh = PrismMesh.new()
+	star_mesh.size = Vector3(0.12, 0.25, 0.12)
+	var star_draw_mat: StandardMaterial3D = StandardMaterial3D.new()
+	star_draw_mat.albedo_color = Color("#ffff00") 
+	star_draw_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+	star_mesh.material = star_draw_mat
+	star_emitter.mesh = star_mesh
+	
+	dust_emitter.emitting = true
+	star_emitter.emitting = true
+	get_tree().create_timer(1.2).timeout.connect(func(): fx_root_node.queue_free())
+
+func _on_gadget_impact_received(type: int, impact_pos: Vector3, radius: float) -> void:
+	var distance: float = global_position.distance_to(impact_pos)
+	if distance > radius: return 
+	
+	match type:
+		1:
+			# === THE DRAGON SLIME PUDDLE INTERCEPT GATES ===
+			# Flips his blackboard memory logs to tell his behavior tree task to execute a faceplant!
+			if is_instance_valid(blackboard):
+				blackboard.set_value("is_slipped", true)
+				blackboard.set_value("slip_elapsed", 0.0)
+				blackboard.set_value("slip_weapon_dropped", false)
+				
+				# Call your custom stumble fall method to shift his current phase state
+				execute_cascade_stumble_fall()
+		0:
+			if is_instance_valid(blackboard):
+				blackboard.set_value("is_tangled", true)
+				blackboard.set_value("bola_timer", 4.0)
+			current_phase = PatrolPhase.BOLA_STRUGGLE
+
+func take_damage(amount: int, push_dir: Vector3 = Vector3.ZERO) -> void:
+	if current_phase == PatrolPhase.STUNNED: return
+	
+	if is_instance_valid(health_posture):
+		health_posture.take_posture_damage(amount)
+		
+		# Apply an instant kinetic recoil knockback vector over the tiles!
+		if push_dir.length_squared() > 0.01 and current_phase != PatrolPhase.STUNNED:
+			velocity = push_dir * 6.5
+			move_and_slide()
+
+# =============================================================================
+#     11. DYNAMIC PROCEDURAL NON-LETHAL SWELLING SYSTEM [INDEX_0.1.30, INDEX_0.1.32]
+# =============================================================================
+func execute_localized_poison_swell(spike_global_impact_pos: Vector3) -> void:
+	if current_phase == PatrolPhase.STUNNED: return
+	
+	var local_impact_height: float = to_local(spike_global_impact_pos).y
+	var swell_offset_vector: Vector3 = Vector3.ZERO
+	var target_part_label_name: String = "Torso"
+	var custom_swell_mesh: Mesh = BoxMesh.new()
+	
+	# Cache original sensory limits to manipulate on impact frames [INDEX_0.1.32]
+	var old_vision_range: float = 9.0
+	if is_instance_valid(vision_sensor):
+		old_vision_range = vision_sensor.vision_range
+	
+	if local_impact_height > 0.45:
+		target_part_label_name = "Head"
+		swell_offset_vector = Vector3(0.0, 0.9, 0.0) 
+		custom_swell_mesh = SphereMesh.new() 
+		
+		# === STEALTH MECHANIC: TUMOR BLINDNESS MATRIX === [INDEX_0.1.30]
+		# Swelling blocks his view, dropping sight reach down to a blind 1.5m corridor!
+		if is_instance_valid(vision_sensor):
+			vision_sensor.vision_range = 1.5
+			print("🕶️ BLINDNESS: Guard's swollen eyes can no longer track distant movement!")
+	elif local_impact_height < -0.35:
+		target_part_label_name = "Ankle"
+		swell_offset_vector = Vector3(randf_range(-0.2, 0.2), -0.6, randf_range(-0.2, 0.2))
+		custom_swell_mesh = CapsuleMesh.new()
+	else:
+		target_part_label_name = "Arm"
+		swell_offset_vector = Vector3(0.35 if randf() > 0.5 else -0.35, 0.1, 0.0)
+		custom_swell_mesh = SphereMesh.new()
+
+	print("🎈 POISON EFFECT: Guard's ", target_part_label_name, " is beginning to swell up!")
+	
+	var balloon_node: MeshInstance3D = MeshInstance3D.new()
+	balloon_node.mesh = custom_swell_mesh
+	add_child(balloon_node)
+	
+	balloon_node.position = swell_offset_vector
+	balloon_node.scale = Vector3.ZERO 
+	
+	var swell_material: StandardMaterial3D = StandardMaterial3D.new()
+	swell_material.albedo_color = Color("#ffaa44") 
+	swell_material.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+	balloon_node.material_override = swell_material
+	
+	var old_marching_speed: float = movement_speed
+	movement_speed *= 0.45 
+	
+	var swell_tween = create_tween().set_parallel(true)
+	swell_tween.tween_property(balloon_node, "scale", Vector3(0.45, 0.45, 0.45), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	
+	# DEFLATION TIMERS: Restores sensory reach and locomotion metrics seamlessly [INDEX_0.1.32]
+	get_tree().create_timer(4.5).timeout.connect(func():
+		if is_instance_valid(balloon_node):
+			var shrink_tween = create_tween()
+			shrink_tween.tween_property(balloon_node, "scale", Vector3.ZERO, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+			shrink_tween.tween_callback(func():
+				movement_speed = old_marching_speed
+				if is_instance_valid(vision_sensor):
+					vision_sensor.vision_range = old_vision_range
+				balloon_node.queue_free()
+			)
+	)
+
+
+func trigger_procedural_counter_window() -> void:
+	if current_phase != PatrolPhase.MARCHING: return
+	
+	# Open the vulnerability lock and enforce a fresh strike rate cooldown pause clock
+	is_vulnerable_to_counter = true
+	combat_strike_cooldown_clock = randf_range(3.5, 5.0) # Attacks every 3-5 seconds organically
+	
+	# Flash the non-diegetic lightning bolt warning popups over his crown! [PDF: 0.1.11, 0.1.18]
+	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+		alert_label.text = "⚡ ⚡"
+		alert_label.modulate = Color("#33ccff") # Neon tactical parry sapphire blue!
+		alert_label.visible = true
+		alert_anchor.scale = Vector3.ZERO
+		alert_bubble_spring_velocity = 16.0 # Snappy comic pop physics speed
+		alert_bubble_display_timer = 0.45   # The counter intercept window duration length
+		
+	# Create a brief deferred one-shot timer to close the window and execute damage if missed!
+	get_tree().create_timer(0.45).timeout.connect(func():
+		if is_vulnerable_to_counter and current_phase == PatrolPhase.MARCHING:
+			is_vulnerable_to_counter = false
+			execute_unblocked_sword_swing_hit()
+	)
+
+func execute_unblocked_sword_swing_hit() -> void:
+	# Close alert popup overlay tracks safely [PDF: 0.1.18]
+	if is_instance_valid(alert_label): alert_label.visible = false
+	
+	# Verify Eira is still inside his strike range block before dealing damage
+	if is_instance_valid(player_ref) and global_position.distance_to(player_ref.global_position) <= 2.4:
+		print("⚔️ COMBAT DAMAGE: Guard lands an unblocked sword strike on Eira!")
+		# Call her native shield block absorption metrics inside player.gd here!
+		if player_ref.has_method("absorb_unblocked_combat_hit"):
+			player_ref.absorb_unblocked_combat_hit(1)
+
+
+func process_combat_chase_loop(delta: float) -> void:
+	if not is_instance_valid(player_ref): return
+	
+	var vector_to_eira: Vector3 = player_ref.global_position - global_position
+	vector_to_eira.y = 0.0 
+	var distance_to_eira: float = vector_to_eira.length()
+	
+	# Close-Quarters Strike Pocket
+	if distance_to_eira <= 1.8:
+		# Freeze his feet movement lines smoothly so he doesn't drift past you
+		velocity.x = move_toward(velocity.x, 0.0, acceleration * 2.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, acceleration * 2.0 * delta)
+		
+		# === FIXED SPINNIG AXIS AXELS: ABSOLUTE HARDFACING LOCK ===
+		# Instantly locks his torso orientation matrix directly onto Eira's skin centers,
+		# completely crushing the weapon-swing delay when running tight circles around him!
+		var heading_dir = vector_to_eira.normalized()
+		if heading_dir.length_squared() > 0.01:
+			var target_look_angle: float = atan2(-heading_dir.x, -heading_dir.z)
+			global_rotation.y = target_look_angle # Instant snap lock! No sticky lerp delay loops!
+			
+		move_and_slide()
+		
+		# INSTANT WINDOW ACCELERATOR: Force attack countdown checks to tick down immediately when in-range
+		if combat_strike_cooldown_clock <= 0.0 and current_phase == PatrolPhase.CHASING:
+			trigger_procedural_counter_window()
+	else:
+		# Standard run tracking loop
+		var heading_dir = vector_to_eira.normalized()
+		var combat_run_speed: float = movement_speed * 1.35
+		
+		velocity.x = lerp(velocity.x, (heading_dir * combat_run_speed).x, acceleration * delta)
+		velocity.z = lerp(velocity.z, (heading_dir * combat_run_speed).z, acceleration * delta)
+		rotation.y = lerp_angle(rotation.y, atan2(-heading_dir.x, -heading_dir.z), turn_speed * 1.5 * delta)
+		move_and_slide()
+
+
+# =============================================================================
+#     12. DYNAMIC THERMAL RESIN IMMOBILIZATION CRYSTALLIZATION
+# =============================================================================
+func execute_resin_crust_freeze() -> void:
+	if current_phase == PatrolPhase.STUNNED: return
+	
+	# Freeze his movement speed down completely to a dead standstill
+	var _old_phase_state: PatrolPhase = current_phase
+	current_phase = PatrolPhase.STUNNED
+	velocity = Vector3.ZERO
+	
+	# Instantly drop a text message display block warning over his head
+	if is_instance_valid(alert_label) and is_instance_valid(alert_anchor):
+		alert_label.text = "🧊 RESIN FREEZE! 🧊"
+		alert_label.modulate = Color("#ffaa44") # Angry amber hardening color
+		alert_label.visible = true
+		alert_anchor.scale = Vector3(1.3, 1.3, 1.3)
+		
+	print("🧊 TRAP IMPACT: Molten dragon resin hardened over ", name, "'s armor! Immobilized.")
+	
+	# Schedule an automated brittle shell crack breakout callback after exactly 4.0 seconds!
+	get_tree().create_timer(4.0).timeout.connect(func():
+		if current_phase == PatrolPhase.STUNNED:
+			current_phase = PatrolPhase.MARCHING # Return him to his pacing paths
+			if is_instance_valid(alert_label): alert_label.visible = false
+			print("💥 TRAP BREAKOUT: Brittle resin crust shattered. Guard freed.")
+	)

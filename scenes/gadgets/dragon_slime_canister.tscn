@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://kc48m6yump6u"]
+
+[ext_resource type="Script" uid="uid://uasml6yhuxjy" path="res://scripts/gadgets/dragon_slime_canister.gd" id="1_0tjio"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_smehm"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_5wce4"]
+radius = 0.15
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jfnov"]
+albedo_color = Color(0.6509804, 0.40392157, 0.29803923, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_5wce4"]
+material = SubResource("StandardMaterial3D_jfnov")
+
+[node name="DragonSlimeCanister" type="RigidBody3D" unique_id=328508451]
+physics_material_override = SubResource("PhysicsMaterial_smehm")
+contact_monitor = true
+max_contacts_reported = 1
+script = ExtResource("1_0tjio")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1256738017]
+shape = SubResource("SphereShape3D_5wce4")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D" unique_id=116828390]
+transform = Transform3D(0.15, 0, 0, 0, 0.15, 0, 0, 0, 0.15, 0, 0, 0)
+mesh = SubResource("CapsuleMesh_5wce4")

@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://7rs5qotn0uiy"]
+
+[ext_resource type="Script" uid="uid://26qjwuhj251t" path="res://scripts/gadgets/stealth_bola.gd" id="1_4vk0i"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_trceg"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_a8y0u"]
+top_radius = 0.05
+bottom_radius = 0.05
+height = 1.2
+
+[node name="Stealth_Bola" type="RigidBody3D" unique_id=398914514]
+contact_monitor = true
+max_contacts_reported = 1
+script = ExtResource("1_4vk0i")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=178594333]
+shape = SubResource("CapsuleShape3D_trceg")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=330123911]
+mesh = SubResource("CylinderMesh_a8y0u")

@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://d1sh3jgeqmay0"]
+
+[ext_resource type="Script" uid="uid://dm76otsgppxh8" path="res://scripts/gadgets/stealth_pebble.gd" id="1_u5n3x"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_fulsm"]
+radius = 0.22
+
+[sub_resource type="SphereMesh" id="SphereMesh_qfm1y"]
+radius = 0.2
+height = 0.3
+
+[node name="Stealth_Pebble" type="RigidBody3D" unique_id=337589820]
+contact_monitor = true
+max_contacts_reported = 1
+script = ExtResource("1_u5n3x")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=527454837]
+shape = SubResource("SphereShape3D_fulsm")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D" unique_id=1911576444]
+mesh = SubResource("SphereMesh_qfm1y")

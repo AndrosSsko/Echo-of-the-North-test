@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://bn70fgh7iprws"]
+
+[ext_resource type="PackedScene" uid="uid://7tlupru8558o" path="res://scenes/vfx/Wind tunnel.glb" id="1_t7v5d"]
+[ext_resource type="Shader" uid="uid://cbcseyi4n3ual" path="res://scenes/vfx/wind_vortex_scroll.gdshader" id="2_ij2w0"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_7r20d"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_830cw"]
+noise = SubResource("FastNoiseLite_7r20d")
+seamless = true
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ucyvi"]
+render_priority = 0
+shader = ExtResource("2_ij2w0")
+shader_parameter/wind_color = Color(1, 1, 1, 0.25)
+shader_parameter/scroll_speed = 1.200000057
+shader_parameter/texture_tiling = 1.00000004424012
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_830cw")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xuemi"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.2, 0.8, 1, 0.34901962)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5wce4"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xg4pp"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.2, 0.8, 1, 0.34901962)
+
+[sub_resource type="SphereMesh" id="SphereMesh_jfnov"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_udeac"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.2, 0.8, 1, 0.34901962)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_mww8h"]
+
+[node name="AimIndicators" type="Node3D" unique_id=1570289844]
+
+[node name="Aim_Line_Pointer" type="Node3D" parent="." unique_id=957034273]
+
+[node name="Wind tunnel" parent="Aim_Line_Pointer" unique_id=168277733 instance=ExtResource("1_t7v5d")]
+
+[node name="Plane" parent="Aim_Line_Pointer/Wind tunnel" index="0" unique_id=1815115955]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+material_override = SubResource("ShaderMaterial_ucyvi")
+
+[node name="Lob_Line_Pointer" type="Node3D" parent="." unique_id=2105330545]
+
+[node name="Line_Visual" type="Decal" parent="Lob_Line_Pointer" unique_id=683163119]
+size = Vector3(1.2, 5, 1.2)
+modulate = Color(0.2, 0.8, 1, 1)
+
+[node name="Wall_Trap_Pointer" type="Node3D" parent="." unique_id=1084626649]
+
+[node name="Preview_Main_Housing" type="MeshInstance3D" parent="Wall_Trap_Pointer" unique_id=969621639]
+material_override = SubResource("StandardMaterial3D_xuemi")
+mesh = SubResource("BoxMesh_5wce4")
+
+[node name="Preview_Stone_Bolt" type="MeshInstance3D" parent="Wall_Trap_Pointer" unique_id=106463176]
+material_override = SubResource("StandardMaterial3D_xg4pp")
+mesh = SubResource("SphereMesh_jfnov")
+
+[node name="Preview_Rope_Visual" type="MeshInstance3D" parent="Wall_Trap_Pointer" unique_id=191059424]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_udeac")
+mesh = SubResource("CylinderMesh_mww8h")
+
+[editable path="Aim_Line_Pointer/Wind tunnel"]

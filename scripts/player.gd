@@ -1,42 +1,56 @@
 extends CharacterBody3D
 
 
+#     1. CORE DATA STRUCTURES & LOCOMOTION ENUMS
+
 enum LocomotionState { STANDARD, SPRINTING, AIR_PREP, SLIDING, STOMP_EXIT, CROUCHING }
 var current_locomotion_mode: LocomotionState = LocomotionState.STANDARD
-enum GadgetType { BOLA, TRAP, PEBBLE, SLIME, BOMB }
 
+enum GadgetType { BOLA, TRAP, PEBBLE, SLIME, BOMB, LAUNCHER }
+const BOLA_MAX_CHARGE_TIME: float = 1.5
 
+# Decoupled Inventory Configuration Resource Management Deck Cards [PDF: 0.1.36]
+@export var equipped_gadgets_deck: Array[GadgetResource] = []
+var current_selected_gadget_index: int = 2
 
+var current_ammo_deck_record: Dictionary = {
+	"Pebble": 99,       # Synced to resource card names
+	"Bola": 3,
+	"Dragon Slime": 4,
+	"Tripwire Trap": 5, # Unlocks item slot launching cleanly
+	"Spine Bomb": 3,
+	"Launcher": 4
+}
 
+# Private Spatial Constant Offsets [PDF: 0.1.36]
 const SHIELD_BACKPACK_POSITION: Vector3 = Vector3(-0.4, 0.2, 0.2)
 const SHIELD_BACKPACK_ROTATION: Vector3 = Vector3(0.0, 0.0, 90.0)
 const FLYING_SHIELD_SCENE = preload("res://scenes/flying_shield_fx.tscn")
-const DRAGON_SLIME_CANISTER_SCENE = preload("res://scenes/dragon_slime_canister.tscn")
+const DRAGON_SLIME_CANISTER_SCENE = preload("res://scenes/gadgets/dragon_slime_canister.tscn")
+
+var current_selected_index: int = 0
 
 
-
+#     2. DESIGNER TUNING PANEL PROPERTIES (GODOT INSPECTOR)
 
 @export_category("Tactile Hip Menu Tuning")
-@export var mesh_menu_turn_speed: float = 11.0    # Turning friction speed when presenting hip
-@export var menu_camera_zoom_fov: float = 45.0    # Focused Field of View for close-up inspection
-
+@export var mesh_menu_turn_speed: float = 11.0
+@export var menu_camera_zoom_fov: float = 45.0
 
 @export_category("Viking Locomotion Tuning")
 @export var sprint_speed_multiplier: float = 1.55
 @export var slide_impulse_velocity: float = 18.0
 @export var slide_friction_decay: float = 4.5
 
-# --- New Shield Surf Parameters ---
 @export_category("Shield Surf Tuning")
 @export var base_slide_friction: float = 0.55
 @export var slide_steer_speed: float = 4.2
 @export var minimum_slide_boost: float = 14.5
 
-# --- ARCHITECTURAL CONFIGURATION MATRIX ---
 @export_category("Movement Core")
 @export var movement_speed: float = 7.0
 @export var crouch_speed: float = 3.2
-@export var climb_speed: float = 3.0         # Cautious vertical climbing speed
+@export var climb_speed: float = 3.0
 @export var acceleration: float = 15.0
 @export var rotation_speed: float = 12.0
 
@@ -58,26 +72,26 @@ const DRAGON_SLIME_CANISTER_SCENE = preload("res://scenes/dragon_slime_canister.
 @export var max_bola_ammo: int = 3
 @export var pebble_throw_cooldown: float = 0.8
 
-# === 2. MULTI-PART RIG CONTAINER GROUP POINTERS ===
-@onready var trap_rig: Node3D = $Trap_PCAM
-@onready var slime_rig: Node3D = $Slime_PCAM
-@onready var pebble_rig: Node3D = $Pebble_PCAM
-@onready var bomb_rig: Node3D = $Bomb_PCAM
-
-# === 3. ADVANCED INVENTORY AMMUNITION RESERVES ===
 @export_category("Survival Inventory Settings")
 @export var trap_ammo: int = 2
 @export var slime_ammo: int = 4
 @export var bomb_ammo: int = 1
 
-# --- PRIVATE SYSTEM REFERENCES ---
+
+#     3. RUNTIME SCENE TREE CONNECTIONS (@ONREADY)
+
+@onready var trap_rig: Node3D = $Trap_PCAM
+@onready var slime_rig: Node3D = $Slime_PCAM
+@onready var pebble_rig: Node3D = $Pebble_PCAM
+@onready var bomb_rig: Node3D = $Bomb_PCAM
+
 @onready var core_capsule_collision: CollisionShape3D = $CollisionShape3D
 @onready var collision_standing: CollisionShape3D = $CollisionShape3D
 @onready var collision_sliding: CollisionShape3D = $CollisionShape3D
 @onready var player_collision: CollisionShape3D = $CollisionShape3D
-@onready var aim_line_visual: Node3D = $Aim_Line_Pointer
 @onready var ground_snapper: RayCast3D = $FloorRay
 @onready var ammo_label: Label = $"../HUD/Ammo_Container/Ammo_Tracker"
+
 @onready var heart_icons: Array = [
 	get_tree().get_first_node_in_group("HUD_Root").get_node("Health_Container/Heart_01") if get_tree().get_first_node_in_group("HUD_Root") and get_tree().get_first_node_in_group("HUD_Root").has_node("Health_Container/Heart_01") else null,
 	get_tree().get_first_node_in_group("HUD_Root").get_node("Health_Container/Heart_02") if get_tree().get_first_node_in_group("HUD_Root") and get_tree().get_first_node_in_group("HUD_Root").has_node("Health_Container/Heart_02") else null,
@@ -93,18 +107,26 @@ const DRAGON_SLIME_CANISTER_SCENE = preload("res://scenes/dragon_slime_canister.
 @onready var bola_mesh_02: Node3D = $EiraVisualCapsuleMesh/Hip_Ammo_Rig/Bola_Mesh_02
 @onready var bola_mesh_03: Node3D = $EiraVisualCapsuleMesh/Hip_Ammo_Rig/Bola_Mesh_03
 @onready var camera: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+
 @onready var left_hip_marker: Marker3D = $EiraVisualCapsuleMesh/LeftHipMarker
 @onready var waist_left_marker: Marker3D = $EiraVisualCapsuleMesh/WaistLeftMarker
 @onready var waist_center_marker: Marker3D = $EiraVisualCapsuleMesh/WaistCenterMarker
 @onready var waist_right_marker: Marker3D = $EiraVisualCapsuleMesh/WaistRightMarker
 @onready var right_hip_marker: Marker3D = $EiraVisualCapsuleMesh/RightHipMarker
+
 @onready var exploration_pcam: Node = $Exploration_PCAM
 @onready var bola_pcam: Node = $Bola_PCAM
 @onready var trap_pcam: Node = $Trap_PCAM
 @onready var slime_pcam: Node = $Slime_PCAM
 @onready var pebble_pcam: Node = $Pebble_PCAM
 @onready var bomb_pcam: Node = $Bomb_PCAM
+
 @onready var placeholder_hand_rig: Node3D = $EiraVisualCapsuleMesh/Placeholder_Hand_Rig
+@onready var indicator_rig: Node3D = $EiraVisualCapsuleMesh/AimIndicators
+@onready var gadget_manager: InventoryGadgetManager = $GadgetManagerComponent
+
+
+#     4. STATE MACHINE BOOLEANS & SYSTEM WATCH CLOCKS [PDF: 0.1.38]
 
 var original_mesh_rotation_y: float = 0.0
 var is_radial_menu_open: bool = false
@@ -128,30 +150,28 @@ var gadget_aim_hold_timer: float = 0.0
 var controller_joystick_debounce: bool = false
 var dragged_body: Node3D = null
 var is_controller_actively_aiming: bool = false
-# Tracking properties for twin-stick thumbstick aiming
 var controller_aim_direction: Vector3 = Vector3.ZERO
 var is_gadget_on_cooldown: bool = false
-var current_selected_gadget: GadgetType = GadgetType.PEBBLE # Starts with Pebble equipped!
+var current_selected_gadget: GadgetType = GadgetType.PEBBLE
 var base_fov: float = 70.0 
 var is_player_currently_visible: bool = true
 var active_highlighted_gadget: GadgetType = GadgetType.PEBBLE
+var bola_charge_timer: float = 0.0
+var launcher_ammo: int = 0
 
 
-
-# Path tracking pointers aligned to your clean scenes directory folders
 @export var pebble_blueprint: PackedScene
 @export var dust_blueprint: PackedScene
 var active_wind_zone: Area3D = null
 
-# Master State Machine Flags
+
+var is_parrying: bool = false
 var is_rolling: bool = false
 var is_attacking: bool = false
 var is_crouching: bool = false
-var is_climbing: bool = false          # Vertical wall traversal flag
+var is_climbing: bool = false 
 var can_dodge: bool = true
 var can_attack: bool = true
-
-# Physics tracking loops parameters
 var current_health: int = 3
 var roll_direction: Vector3 = Vector3.ZERO
 var roll_timer: float = 0.0
@@ -162,106 +182,109 @@ var locked_climb_x: float = 0.0
 var is_reading_chest_lore: bool = false
 var active_chest_ref: Area3D = null
 var is_menu_just_opened: bool = false
+var master_tactical_lob_distance: float = 8.0
+
+#     5. ENGINE READY INITIALIZATION
 
 func _ready() -> void:
+	radial_menu_active = false
+	is_radial_menu_open = false
+	is_actively_aiming_gadget = false
+	is_controller_actively_aiming = false
+	Engine.time_scale = 1.0
 	add_to_group("PlayerGroup")
 	current_health = maximum_health
 	
 	if is_instance_valid(hitbox_collision):
 		hitbox_collision.disabled = true
-		
 	melee_hitbox.area_entered.connect(_on_melee_hit_registered)
 	melee_hitbox.body_entered.connect(_on_melee_hit_registered)
-	
 	current_bola_ammo = max_bola_ammo
 	update_ammo_hud_display()
 	
-	# Allow Eira to always process her inputs even when the 3D world physics is frozen!
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	
 	camera_target_fov = 70.0
 	camera_target_offset = Vector3.ZERO
-
 	if is_instance_valid(melee_hitbox):
-		melee_hitbox.hide() # Hides melee visualization until you attack
-		
-	if is_instance_valid(aim_line_visual):
-		aim_line_visual.hide() # Hides crosshair until F is held down
-
+		melee_hitbox.hide()
 	update_physical_belt_mesh_visibility()
-
-	# 1. Force the overworld exploration camera to win dominance at boot
+	
 	if is_instance_valid(exploration_pcam):
 		exploration_pcam.priority = 30
-		
-	# 2. Force all close-up utility cameras to stay completely asleep (0)
 	clear_all_gadget_camera_priorities()
 	
-	# 3. Synchronize your starting indices so code and UI match perfectly
 	current_selected_gadget = GadgetType.PEBBLE
 	menu_highlighted_gadget = GadgetType.PEBBLE
 	active_highlighted_gadget = GadgetType.PEBBLE
-
 	if has_node("CeilingCheck"):
-		$CeilingCheck.add_exception(self) # Forces the ceiling raycast to ignore Eira!
-
+		$CeilingCheck.add_exception(self)
+		
 	var start_back = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
 	var start_hand = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
 	var start_feet = get_node_or_null("FeetMarker/FeetShieldMesh")
+	if start_back: start_back.visible = true
+	if start_hand: start_hand.visible = false
+	if start_feet: start_feet.visible = false
+	current_selected_gadget_index = 2
+	if is_instance_valid(gadget_manager):
+		gadget_manager.initialize_manager(self)
+
 	
-	if start_back: start_back.visible = true  # Back shield starts fully visible
-	if start_hand: start_hand.visible = true  # Hand shield starts fully visible
-	if start_feet: start_feet.visible = false # Feet surfboard mesh stays completely hidden until sliding
+	master_tactical_lob_distance = 8.0
 
+	if is_instance_valid(indicator_rig) and indicator_rig.has_node("Wall_Trap_Pointer"):
+		var trap_pointer_node = indicator_rig.get_node("Wall_Trap_Pointer")
+		if is_instance_valid(trap_pointer_node):
+			# Handshake her root script address down to the pointer component memory
+			trap_pointer_node.set("cached_master_player_ref", self)
+			print("🪤 TRAP ENGINE: Handshake secured! Direct player reference cached into indicators.")
+
+
+
+#     6. GLOBAL PHYSICS PROCESSING LOOP (_PHYSICS_PROCESS) [PDF: 0.1.40]
 func _physics_process(delta: float) -> void:
-	# 1. TIME BUBBLE RECOVERY SYSTEM: Scales Eira's internal clock ticks to 100% inside slow-motion
 	var _adjusted_delta: float = delta * (1.0 / Engine.time_scale) if radial_menu_active else delta
-
 	var track_anchor_node = get_node_or_null("Camera_Track_Anchor")
 	if is_instance_valid(track_anchor_node):
 		if not radial_menu_active:
 			track_anchor_node.global_transform.basis = global_transform.basis
 		else:
 			track_anchor_node.global_transform.basis = Basis.IDENTITY
-
-	# 2. RADIAL SELECTION MENU REFRESH LOOP
-	if radial_menu_active:
+			
+	# FIXED MOVEMENT FREEZE FLUSH: Release keyboard input blocks if the weapon wheel window drops out!
+	if radial_menu_active and is_radial_menu_open:
 		velocity.x = move_toward(velocity.x, 0.0, 25.0 * _adjusted_delta) 
 		velocity.z = move_toward(velocity.z, 0.0, 25.0 * _adjusted_delta) 
 		move_and_slide() 
 		evaluate_radial_wheel_joystick_navigation() 
-		return  # ONLY locks locomotion variables while actively holding down R
+		return 
+	else:
+		radial_menu_active = false
 
-	# 3. NATIVE ENVIRONMENTAL GRAVITY VECTOR COMPENSATOR
 	if current_locomotion_mode == LocomotionState.AIR_PREP:
-		# Safety Shutter: Let her lift off seamlessly without ground snapping interference!
 		var default_engine_gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 		velocity.y -= default_engine_gravity * _adjusted_delta
 	elif not is_on_floor():
 		var default_engine_gravity = ProjectSettings.get_setting("physics/3d/default_gravity")
 		velocity.y -= default_engine_gravity * _adjusted_delta
 	else:
-		# Small constant downward pressure prevents the capsule from floating
 		velocity.y = -0.1 
 
-	# 4. CAMERA ACQUISITION SAFETY RAIL
+	if is_actively_aiming_gadget:
+		bola_charge_timer += _adjusted_delta
+
 	if not is_instance_valid(camera): 
 		camera = get_viewport().get_camera_3d() if get_viewport() else null
 
-	# 5. INPUT DIRECTION CAPTURE ENGINE
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	
-	# Sprint Auto-Cancel Filter: Drop out of run state if keys are released
 	if input_vector.length() < 0.1 and current_locomotion_mode == LocomotionState.SPRINTING:
 		current_locomotion_mode = LocomotionState.STANDARD
 
-	# 6. VERTICAL CLIMBING INTERCEPT MODULE
 	if is_climbing:
 		process_climbing_movement(input_vector, _adjusted_delta)
 		move_and_slide()
 		return
 
-	# 7. ORIENTATION INTERACTION ALIGNMENT MATRIX
 	var _direction: Vector3 = Vector3.ZERO 
 	if is_instance_valid(camera): 
 		var camera_transform: Transform3D = camera.global_transform 
@@ -271,10 +294,8 @@ func _physics_process(delta: float) -> void:
 		right_direction.y = 0.0 
 		forward_direction = forward_direction.normalized() 
 		right_direction = right_direction.normalized()
-		
 		_direction = (right_direction * input_vector.x) + (forward_direction * input_vector.y)
 
-	# 8. SPRINT DEPLOY INTERCEPT MATRIX
 	var is_sprint_button_held: bool = Input.is_action_pressed("sprint")
 	if current_locomotion_mode == LocomotionState.STANDARD or current_locomotion_mode == LocomotionState.SPRINTING or current_locomotion_mode == LocomotionState.CROUCHING:
 		if is_crouching or current_locomotion_mode == LocomotionState.CROUCHING:
@@ -285,7 +306,6 @@ func _physics_process(delta: float) -> void:
 			else:
 				current_locomotion_mode = LocomotionState.STANDARD
 
-	# 9. CAMERA ENGINE FOV DYNAMICS
 	match current_locomotion_mode:
 		LocomotionState.SLIDING:
 			var horizontal_speed := Vector3(velocity.x, 0, velocity.z).length()
@@ -301,34 +321,39 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(camera):
 		camera.fov = lerp(camera.fov, camera_target_fov, 10.0 * _adjusted_delta)
 
-	# 10. ACTIVE LOCOMOTION STATE MACHINE HAND OFF
 	match current_locomotion_mode:
 		LocomotionState.AIR_PREP:
-			# Move and process the capsule physics cleanly inside world coordinates
 			move_and_slide()
-			
-			# FIXED DROP CRITERIA: Only execute the surf landing once her upward 
-			# jump momentum begins falling back down flush against floor meshes!
 			if velocity.y <= 0.0 and is_on_floor(): 
 				enter_sliding_state()
 			return
-		
 		LocomotionState.SLIDING:
 			if not is_on_floor() and velocity.y < -6.0:
 				enter_stomp_exit_state()
 				return
 			process_sliding_movement(_adjusted_delta)
 			return
-		
 		LocomotionState.STOMP_EXIT:
 			current_locomotion_mode = LocomotionState.STANDARD
 		LocomotionState.CROUCHING:
 			is_crouching = true
+			if current_locomotion_mode == LocomotionState.SLIDING:
+				process_sliding_movement(_adjusted_delta)
+			elif current_locomotion_mode == LocomotionState.AIR_PREP:
+				pass
+			elif is_rolling:
+				process_active_roll(_adjusted_delta)
+			if is_attacking:
+				process_active_attack(_direction, _adjusted_delta)
+			else:
+				# === FIXED TRAVERSAL OVERRIDE: FREEZE LOCOMOTION WHILE CLIMBING ===
+				# This stops gravity and friction vectors from dragging her down while pulling up!
+				if is_climbing:
+					return # Hand control over completely to our smooth procedural interpolation tween!
+				process_standard_movement(_direction, _adjusted_delta)
+			move_and_slide()
 
-	# 11. ACTIVE SYSTEM MOTION DISPATCHER
 	if current_locomotion_mode == LocomotionState.SLIDING:
-		# Safety Gate: Call ONLY your slide logic. Standard walking algorithms are 
-		# completely blocked from touching or twisting her rotation matrices!
 		process_sliding_movement(_adjusted_delta)
 	elif current_locomotion_mode == LocomotionState.AIR_PREP:
 		pass 
@@ -338,76 +363,121 @@ func _physics_process(delta: float) -> void:
 		process_active_attack(_direction, _adjusted_delta) 
 	else:
 		process_standard_movement(_direction, _adjusted_delta) 
-		
-	# Move the character capsule cleanly inside world coordinates
 	move_and_slide()
 
-	if has_node("Aim_Line_Pointer") and $Aim_Line_Pointer.visible:
-		# Dynamically runs your parabolic physics tracking loops every frame tick!
-		draw_predictive_lob_trajectory_path(delta)
-
-	# 12. HOTKEY TRIGGER DETECTORS
 	if Input.is_action_just_pressed("dodge_roll") and can_dodge and not is_rolling:
 		initiate_dodge_roll(_direction)
 	elif Input.is_action_just_pressed("attack_melee") and can_attack and not is_rolling:
 		initiate_melee_strike()
-			
 
-# --- NEW: VISUAL UPDATE LOOP ---
-func _process(_delta: float) -> void:
-	update_aim_line_visual()
 
-func update_aim_line_visual() -> void:
-	var flat_pointer = get_node_or_null("Aim_Line_Pointer/Line_Visual")
-	var lob_pointer = get_node_or_null("Lob_Line_Pointer/Line_Visual")
+#     7. MODULAR ENGINE UPDATE ROUTINGS (_PROCESS) [PDF: 0.1.42]
+
+# =============================================================================
+#     7. MODULAR ENGINE UPDATE ROUTINGS & STANCE ALIGNMENTS (_PROCESS)
+# =============================================================================
+func _process(delta: float) -> void:
+	var look_axis: Vector2 = Input.get_vector("look_left", "look_right", "look_up", "look_down")
+	var move_axis: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	
-	# Determine if the player is actively pressing the Aim key (F)
-	var is_aiming: bool = is_actively_aiming_gadget or is_controller_actively_aiming
+	var is_right_stick_actively_moving: bool = look_axis.length() > 0.20
+	var is_left_stick_actively_moving: bool = move_axis.length() > 0.20
 	
-	if not is_aiming:
-		if flat_pointer: flat_pointer.visible = false
-		if lob_pointer: lob_pointer.visible = false
-		return
+	# === TRAP ISOLATION SHUTTER VALVE ===
+	# If she is holding the Tripwire Trap (Index 1), we completely block free aiming crosshairs!
+	# This stops the right stick and mouse cursor from overriding her posture angles.
+	var true_aim_state: bool = false
+	if current_selected_gadget_index == 1:
+		# Keep Tripwire Trap restricted to automated proximity wall snapping [PDF: 0.1.15]
+		true_aim_state = false
+	elif current_selected_gadget_index == 5:
+		# RESTORE FREE AIM: Launcher slot index 5 fully re-awakens your 360-degree aiming crosshairs!
+		if not is_radial_menu_open and not radial_menu_active:
+			true_aim_state = is_actively_aiming_gadget or is_right_stick_actively_moving
+	else:
+		# Standard pebbles/bolas free aiming preservation track
+		if not is_radial_menu_open and not radial_menu_active:
+			true_aim_state = is_actively_aiming_gadget or is_right_stick_actively_moving
+
+		# =============================================================================
+		#     SLOT INDEX 5: UNIFIED RESIN LAUNCHER CROSSHAIR MASK [PDF: 0.1.20, 0.1.21]
+		# =============================================================================
+		if current_selected_gadget_index == 5:
+			var active_card = equipped_gadgets_deck[current_selected_gadget_index]
+			if is_instance_valid(active_card) and active_card.projectile_scene_file:
+				
+				# 1. CRUSH FORWARD LOCK: Call our sanitized 360-degree aiming direction vector!
+				var verified_launch_heading: Vector3 = get_validated_aim_direction()
+				
+				# 2. DECOUPLED INSTANTIATION: Materialize the fluid area capsule cleanly
+				var fluid_instance = active_card.projectile_scene_file.instantiate() as Node3D
+				get_tree().current_scene.add_child(fluid_instance)
+				
+				# 3. POSITION PROJECTILE SAFELY OUTSIDE HER BODY COLLIDERS
+				# Spawns the projectile 0.7 meters FORWARD to guarantee no self-collision locks!
+				var spawn_launch_origin = global_position + Vector3(0.0, 0.8, 0.0) + (verified_launch_heading * 0.7)
+				fluid_instance.global_position = spawn_launch_origin
+				fluid_instance.set("move_direction", verified_launch_heading)
+				
+				# Compute charging thermal heat ratio multi-gates [PDF: 0.1.75]
+				var heat_ratio_multiplier: float = clampf(bola_charge_timer / BOLA_MAX_CHARGE_TIME, 0.25, 1.0)
+				fluid_instance.set("current_heat_ratio", heat_ratio_multiplier)
+				
+				if heat_ratio_multiplier >= 1.0:
+					fluid_instance.set("flight_speed", 25.0)
+					print("🔥 LAUNCHER: High-pressure boiling amber resin discharged!")
+				else:
+					print(" Launcher: Low-temperature fluid resin discharged.")
+					
+				if current_ammo_deck_record.has(active_card.display_name):
+					current_ammo_deck_record[active_card.display_name] -= 1
+					launcher_ammo = current_ammo_deck_record[active_card.display_name]
+					
+			bola_charge_timer = 0.0
+			is_actively_aiming_gadget = false
+			update_ammo_hud_display()
+			update_physical_belt_mesh_visibility()
+			return
+
+
+	if has_node("Systems/AimController"):
+		$Systems/AimController.process_aim_logic(true_aim_state, bola_charge_timer, delta)
+		controller_aim_direction = $Systems/AimController.aim_direction
 		
-	# CONTEXTUAL SEPARATION MATRIX
-	match current_selected_gadget:
-		GadgetType.SLIME, GadgetType.BOMB:
-			# Overhead Lobs: Wake up our brand-new arc tracking mesh node child!
-			if flat_pointer: flat_pointer.visible = false
-			if lob_pointer: lob_pointer.visible = true
-		_:
-			# Direct Fire: Wake up your standard legacy straight laser line child!
-			if flat_pointer: flat_pointer.visible = true
-			if lob_pointer: lob_pointer.visible = false
-	
-	if not is_instance_valid(aim_line_visual): return
-	if not is_instance_valid(camera): return # ADD THIS LINE
-	
-	# Determine if we should be aiming
-	var should_aim = is_actively_aiming_gadget or is_controller_actively_aiming
-	aim_line_visual.visible = should_aim
+		if not true_aim_state and "active_input_mode_flag" in $Systems/AimController:
+			$Systems/AimController.active_input_mode_flag = "MOUSE"
 
-	if should_aim:
-		var target_rot_y: float = 0.0
-		
-		if is_controller_actively_aiming:
-			target_rot_y = atan2(-controller_aim_direction.x, -controller_aim_direction.z)
+	if has_node("Systems/IndicatorController"):
+		$Systems/IndicatorController.update_visual_indicators(true_aim_state, controller_aim_direction, bola_charge_timer, delta)
+
+	# Continuous Proximity System Dispatcher: Wakes up the trap system dynamically if F is held
+	if current_selected_gadget_index == 1 and has_node("Systems/TrapPlacementSystem"):
+		if is_actively_aiming_gadget:
+			$Systems/TrapPlacementSystem.start_aiming()
 		else:
-			# Raycast to ground plane for mouse aiming
-			var mouse_pos = get_viewport().get_mouse_position()
-			var ray_origin = camera.project_ray_origin(mouse_pos)
-			var ray_normal = camera.project_ray_normal(mouse_pos)
-			var plane = Plane(Vector3.UP, global_position.y)
-			var target_point = plane.intersects_ray(ray_origin, ray_normal)
-			
-			if target_point:
-				var dir = (target_point - global_position).normalized()
-				target_rot_y = atan2(-dir.x, -dir.z)
-		
-		# Smoothly rotate the pointer (The RemoteTransform3D handles the position!)
-		rotation.y = lerp_angle(rotation.y, target_rot_y, 0.5)
+			$Systems/TrapPlacementSystem.stop_aiming_and_cancel()
 
-# --- VERTICAL WALL TRAVERSAL ENGINE ---
+	# Free roaming turning: Eira will ONLY adjust her body mesh direction 
+	# if you are actively walking around, leaving her look angle completely untouched when stationary!
+	if not true_aim_state and is_instance_valid(eira_body_mesh) and not is_radial_menu_open:
+		if is_left_stick_actively_moving or move_axis.length_squared() > 0.04:
+			var direction_heading: Vector3 = Vector3.ZERO
+			if is_instance_valid(camera):
+				var cam_basis: Basis = camera.global_transform.basis
+				var right_dir: Vector3 = cam_basis.x
+				var forward_dir: Vector3 = cam_basis.z
+				right_dir.y = 0.0
+				forward_dir.y = 0.0
+				var input_vec: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+				direction_heading = (right_dir.normalized() * input_vec.x + forward_dir.normalized() * input_vec.y).normalized()
+			
+			if direction_heading.length_squared() > 0.01:
+				var look_angle: float = atan2(-direction_heading.x, -direction_heading.z)
+				eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, look_angle, mesh_menu_turn_speed * delta)
+
+
+#     8. VERTICAL WALL TRAVERSAL TRACTION HOOKS
+
 func initiate_ledge_climb(wall_x_coord: float) -> void:
 	is_climbing = true
 	velocity = Vector3.ZERO
@@ -423,14 +493,12 @@ func process_climbing_movement(input_vector: Vector2, delta: float) -> void:
 	velocity.y = lerp(velocity.y, vertical_velocity, acceleration * delta)
 	velocity.z = lerp(velocity.z, lateral_velocity, acceleration * delta)
 	velocity.x = 0.0
-	
 	if global_position.y > 5.5 and vertical_velocity > 0.1:
 		exit_ledge_climb()
 		global_position.y = 5.75
 		velocity = Vector3(-4.0, 2.0, 0.0)
 		print("CLIMBING: Eira vaults over the top ledge lip onto the platform deck!")
 		return
-	
 	if is_on_floor() and vertical_velocity < -0.1:
 		exit_ledge_climb()
 
@@ -439,47 +507,41 @@ func exit_ledge_climb() -> void:
 	velocity = Vector3.ZERO
 	print("CLIMBING: Eira releases her hold and drops to her feet.")
 
-# --- UTILITY LEVEL REACTION HOOKS ---
 func set_active_wind_zone(zone: Area3D) -> void:
 	active_wind_zone = zone
 
+
+#     9. PARTICLE VFX GENERATION SYSTEMS [PDF: 0.1.43, 0.1.44]
+
 func spawn_footstep_dust_cloud(forced: bool = false) -> void:
-	# 1. Direct State Guard Rails
 	if not forced and (is_crouching or is_climbing):
 		return
-		
-	# CRITICAL CHECK: Prints a clear error in your Godot Output window if the slot is empty
 	if not dust_blueprint:
-		print("⚠️ PLAYER VFX ERROR: 'dust_blueprint' slot is EMPTY in the Inspector! Please drag your particle scene into it.")
+		print("PLAYER VFX ERROR: 'dust_blueprint' slot is EMPTY inside Inspector!")
 		return
-
-	# 2. Track World Floor Surface Surfaces via Raycast
+		
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	var floor_query = PhysicsRayQueryParameters3D.create(global_position, global_position + Vector3(0.0, -1.5, 0.0))
 	var floor_result: Dictionary = space_state.intersect_ray(floor_query)
 	var target_dust_color: Color = Color("#e3dac9")
-	
 	if not floor_result.is_empty():
 		var standing_surface: Node = floor_result["collider"]
 		if "High_Platform" in standing_surface.name or "Ramp" in standing_surface.name:
 			target_dust_color = Color("#5c4033")
 		elif "Ancient_Archway" in standing_surface.name:
 			target_dust_color = Color("#4a4d50")
-
-	# 3. Instantiate Scene to World Node Hierarchy
+			
 	var dust_instance = dust_blueprint.instantiate()
 	get_parent().add_child(dust_instance)
 	dust_instance.global_position = global_position + Vector3(0.0, 0.05, 0.0)
 	dust_instance.global_transform.basis = global_transform.basis
 	
-	# 4. FIXED: Duck-typing configuration to handle BOTH CPU & GPU particles seamlessly
 	if "emitting" in dust_instance:
-		dust_instance.emitting = false # Kill pre-fire cycles
+		dust_instance.emitting = false 
 		if dust_instance.has_method("restart"):
-			dust_instance.restart() # Forces GPU engines to re-evaluate life cycles
+			dust_instance.restart() 
 		dust_instance.emitting = true
 		
-	# 5. FIXED: Type-Agnostic Safe Color Injection
 	if "draw_pass_1" in dust_instance and is_instance_valid(dust_instance.draw_pass_1):
 		var runtime_mesh = dust_instance.draw_pass_1.duplicate()
 		if is_instance_valid(runtime_mesh.material):
@@ -487,7 +549,7 @@ func spawn_footstep_dust_cloud(forced: bool = false) -> void:
 			if "albedo_color" in runtime_material:
 				runtime_material.albedo_color = target_dust_color
 			runtime_mesh.material = runtime_material
-		dust_instance.draw_pass_1 = runtime_mesh
+			dust_instance.draw_pass_1 = runtime_mesh
 	elif "mesh" in dust_instance and is_instance_valid(dust_instance.mesh):
 		var runtime_mesh = dust_instance.mesh.duplicate()
 		if is_instance_valid(runtime_mesh.material):
@@ -495,31 +557,26 @@ func spawn_footstep_dust_cloud(forced: bool = false) -> void:
 			if "albedo_color" in runtime_material:
 				runtime_material.albedo_color = target_dust_color
 			runtime_mesh.material = runtime_material
-		dust_instance.mesh = runtime_mesh
-
-	# 6. Lifecycle Management Safe House
+			dust_instance.mesh = runtime_mesh
+			
 	if dust_instance.has_signal("finished"):
 		dust_instance.finished.connect(func(): dust_instance.queue_free())
 	else:
 		get_tree().create_timer(2.0).timeout.connect(func(): if is_instance_valid(dust_instance): dust_instance.queue_free())
-	
-	# 7. Acoustic Interaction Ripple 
+		
 	var ripple_blueprint = load("res://scenes/acoustic_ripple.tscn")
 	if ripple_blueprint:
 		var ripple_instance = ripple_blueprint.instantiate() as MeshInstance3D
 		get_parent().add_child(ripple_instance)
 		ripple_instance.global_position = global_position + Vector3(0.0, 0.02, 0.0)
 		ripple_instance.scale = Vector3(0.1, 0.1, 0.1)
-		
 		var ripple_tween: Tween = create_tween()
 		ripple_tween.set_parallel(true)
 		ripple_tween.tween_property(ripple_instance, "scale", Vector3(6.0, 1.0, 6.0), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		
 		if is_instance_valid(ripple_instance.mesh) and is_instance_valid(ripple_instance.mesh.material):
 			var runtime_mat = ripple_instance.mesh.material.duplicate() as StandardMaterial3D
 			ripple_instance.material_override = runtime_mat
 			ripple_tween.tween_property(runtime_mat, "albedo_color:a", 0.0, 0.45)
-			
 		ripple_tween.chain().tween_callback(func(): ripple_instance.queue_free())
 
 func trigger_capture_respawn() -> void:
@@ -532,8 +589,8 @@ func trigger_capture_respawn() -> void:
 	if is_instance_valid(checkpoint):
 		global_position = checkpoint.global_position
 		velocity = Vector3.ZERO
-		if is_crouching: toggle_crouch_state()
-		if is_climbing: is_climbing = false
+	if is_crouching: toggle_crouch_state()
+	if is_climbing: is_climbing = false
 	var smudge: CharacterBody3D = $"../Smudge"
 	if is_instance_valid(smudge):
 		smudge.global_position = global_position + Vector3(-2.0, 0.0, 0.0)
@@ -543,160 +600,92 @@ func update_health_bar_display() -> void:
 	for i in range(maximum_health):
 		if is_instance_valid(heart_icons[i]): heart_icons[i].visible = (i < current_health)
 
-var bola_blueprint = preload("res://scenes/stealth_bola.tscn")
 
-func execute_pebble_throw() -> void:
-	print("Eira throws a spinning weighted Bola gadget forward!")
-	var bola_instance = bola_blueprint.instantiate()
-	bola_instance.position = global_position + Vector3(0.0, 0.8, 0.0)
-	get_parent().add_child(bola_instance)
-	var forward_vector: Vector3 = -global_transform.basis.z.normalized()
-	if bola_instance.has_method("initialize_bola_flight"):
-		bola_instance.initialize_bola_flight(forward_vector)
+#     10. LOCOMOTION MODIFIERS & BOUNDS MANAGEMENT [PDF: 0.1.45, 0.1.46]
 
 func toggle_crouch_state() -> void:
 	var target_crouch_state: bool = not is_crouching
-	
 	if target_crouch_state:
-		# Enter Stealth Crouch parameters cleanly
 		is_crouching = true
 		current_locomotion_mode = LocomotionState.CROUCHING
 		update_player_size(true)
 	else:
-		# FIXED: Completely wipes out the crouch state, returning full normal walking velocity!
 		is_crouching = false
 		current_locomotion_mode = LocomotionState.STANDARD
 		update_player_size(false)
-		
-	print("TRACTION UPDATE: Stance changed. Active Crouch Flag = ", is_crouching, " | Locomotion Mode = ", current_locomotion_mode)
 
 func update_player_size(crouching: bool) -> void:
 	is_crouching = crouching
-	
-	# Fetch our standing collision node reference safely
 	if is_instance_valid(collision_standing):
 		var shape_ref = collision_standing.shape as CapsuleShape3D
 		if shape_ref:
 			if crouching:
-				# 1. COMPRESS BOUNDS: Drop height to 0.9m for the crouch tuck
 				shape_ref.height = 0.9
-				
-				# SHIFT COLLIDER UP: Keeps the bottom of the capsule perfectly flush with the ground!
 				collision_standing.position.y = -0.425
-				
-				if is_instance_valid(camera): 
-					camera.position.y = 0.65
-				if has_node("FeetMarker"): 
-					$FeetMarker.position.y = -0.45
+				if is_instance_valid(camera): camera.position.y = 0.65
+				if has_node("FeetMarker"): $FeetMarker.position.y = -0.45
 			else:
-				# 2. STANDARD PROFILE: Expand back to Eira's true 1.75m standing height
 				shape_ref.height = 1.75
-				
-				# RESET COLLIDER POSITION: Snap physics center right back to middle mass
 				collision_standing.position.y = 0.0
-				
-				if is_instance_valid(camera): 
-					camera.position.y = 1.45
-				if has_node("FeetMarker"): 
-					$FeetMarker.position.y = -0.875
-					
-			velocity.y = 0.0 # Clean out stale vertical velocity stacks
-
-	# --- FIXED VISUAL MESH DISTORTIONS ---
+				if is_instance_valid(camera): camera.position.y = 1.45
+				if has_node("FeetMarker"): $FeetMarker.position.y = -0.875
+			velocity.y = 0.0
 	if is_instance_valid(eira_body_mesh):
 		if eira_body_mesh.mesh is CapsuleMesh:
 			eira_body_mesh.mesh.height = 0.9 if crouching else 1.75
-		eira_body_mesh.position.y = -0.225 if crouching else 0.0
+			eira_body_mesh.position.y = -0.225 if crouching else 0.0
 
 func process_standard_movement(_direction: Vector3, delta: float) -> void:
-	# 1. Slide along walls naturally if colliding to prevent clipping freezes
 	if is_on_wall():
 		_direction = _direction.slide(get_wall_normal()).normalized()
-
-	# 2. Establish her true baseline traction speed parameters
-	var active_speed: float = movement_speed
-	
+	var _active_speed: float = movement_speed
 	if current_locomotion_mode == LocomotionState.SPRINTING:
-		active_speed = movement_speed * sprint_speed_multiplier
+		_active_speed = movement_speed * sprint_speed_multiplier
 	elif is_crouching or current_locomotion_mode == LocomotionState.CROUCHING:
-		active_speed = crouch_speed
-
-	# 3. THE TRACTION INJECTION MATRIX
-	# If keys are being pressed, push velocity vectors directly onto her axes!
-	if _direction.length_squared() > 0.001:
-		# Symmetrical Interpolation: Blends her horizontal movements instantly
-		velocity.x = lerp(velocity.x, _direction.x * active_speed, 12.0 * delta)
-		velocity.z = lerp(velocity.z, _direction.z * active_speed, 12.0 * delta)
+		_active_speed = crouch_speed
 		
-		# Rotate her visual mesh model to face her walking direction naturally
-		if not radial_menu_active and is_instance_valid(eira_body_mesh):
+	# FIXED MESH DIRECTION MATRIX: Only turns Eira via WASD keys if she isn't aiming! [PDF: 0.1.46]
+	if _direction.length_squared() > 0.001:
+		if not is_actively_aiming_gadget and not is_controller_actively_aiming and is_instance_valid(eira_body_mesh):
 			var look_angle: float = atan2(-_direction.x, -_direction.z)
 			eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, look_angle, mesh_menu_turn_speed * delta)
+		
+		# LOCOMOTION VALVE: Eira retains 100% fluid walking speed while aiming!
+		velocity.x = lerp(velocity.x, _direction.x * _active_speed, acceleration * delta)
+		velocity.z = lerp(velocity.z, _direction.z * _active_speed, acceleration * delta)
 	else:
-		# 4. CRISP ENVIRONMENT BRAKING CONTROL
-		# Smooth deceleration brings her to a clean halt when inputs are empty
+		if not is_actively_aiming_gadget and not is_controller_actively_aiming and is_instance_valid(eira_body_mesh):
+			eira_body_mesh.rotation.y = lerp_angle(eira_body_mesh.rotation.y, 0.0, mesh_menu_turn_speed * delta)
 		velocity.x = move_toward(velocity.x, 0.0, acceleration * 2.0 * delta)
 		velocity.z = move_toward(velocity.z, 0.0, acceleration * 2.0 * delta)
-
-
+		
 	if radial_menu_active and is_instance_valid(eira_body_mesh) and is_instance_valid(camera):
 		var camera_basis: Transform3D = camera.global_transform
 		var camera_forward: Vector3 = -camera_basis.basis.z
 		camera_forward.y = 0.0
 		camera_forward = camera_forward.normalized()
+		var target_presentation_angle: float = eira_body_mesh.global_rotation.y
 		
-		# Compute her flat forward direction vector cleanly
+		# Compute her flat forward direction vector cleanly safely [PDF: 0.1.47]
 		var current_mesh_forward: Vector3 = -eira_body_mesh.global_transform.basis.z
 		current_mesh_forward.y = 0.0
 		current_mesh_forward = current_mesh_forward.normalized()
 		
-		var is_back_already_exposed: bool = current_mesh_forward.dot(camera_forward) > 0.0
-		var target_presentation_angle: float = eira_body_mesh.global_rotation.y
-		
-		if not is_back_already_exposed:
-			# Only calculate the screen back flip angle if her chest is blocking the lens!
+		if not current_mesh_forward.dot(camera_forward) > 0.0:
 			target_presentation_angle = atan2(camera_forward.x, camera_forward.z) + PI
-		
-		# GADGET TWIST OFFSETS: Symmetrical exposure alignment values
+			
 		match menu_highlighted_gadget:
-			GadgetType.BOLA:   target_presentation_angle += deg_to_rad(45.0)
-			GadgetType.TRAP:   target_presentation_angle += deg_to_rad(20.0)
+			GadgetType.BOLA: target_presentation_angle += deg_to_rad(45.0)
+			GadgetType.TRAP: target_presentation_angle += deg_to_rad(20.0)
 			GadgetType.PEBBLE: target_presentation_angle += deg_to_rad(0.0)
-			GadgetType.SLIME:  target_presentation_angle += deg_to_rad(-20.0)
-			GadgetType.BOMB:   target_presentation_angle += deg_to_rad(-45.0)
-		
-		# Fluidly interpolate her visible visual skeleton using un-slowed delta pacing
+			GadgetType.SLIME: target_presentation_angle += deg_to_rad(-20.0)
+			GadgetType.BOMB: target_presentation_angle += deg_to_rad(-45.0)
 		eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, target_presentation_angle, mesh_menu_turn_speed * delta)
-		
-		# Bring her horizontal physics body capsule speeds to a safe halt while browsing tool bags
 		velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
 		velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
 
-	if has_node("Aim_Line_Pointer") and $Aim_Line_Pointer.visible and not radial_menu_active and current_locomotion_mode != LocomotionState.SLIDING and current_locomotion_mode != LocomotionState.AIR_PREP:
-		if is_instance_valid(eira_body_mesh) and is_instance_valid(camera):
-			var target_aim_point: Vector3 = $Aim_Line_Pointer.global_position
-			
-			# 2. GENERATE THE FACING VECTOR: Find the horizontal line from her center to the target
-			var look_vector: Vector3 = (target_aim_point - global_position).normalized()
-			look_vector.y = 0.0 # Maintain perfectly flat horizon stability
-			
-			if look_vector.length_squared() > 0.01:
-				# Calculate the precise angle needed to face your crosshair perfectly
-				var desired_aim_angle: float = atan2(-look_vector.x, -look_vector.z)
-				
-				# 3. COMPEL EXTENT ROTATION: Force her skeleton and capsule to face the line!
-				eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, desired_aim_angle, 14.0 * delta)
-				global_rotation.y = lerp_angle(global_rotation.y, desired_aim_angle, 14.0 * delta)
-				
-				# 4. FIXED STRAFE TRACTION: If keys are held, overwrite normal mesh running angles 
-				# to let her jog sideways/backward while keeping her shoulders pointed at the target!
-				if _direction.length_squared() > 0.01:
-					# This smoothly blends her capsule velocity along your WASD choices 
-					# without letting her body break its aim lock to spin around
-					var strafe_speed_multiplier: float = 0.85 # Slight tactical speed dampening while aiming
-					velocity.x = lerp(velocity.x, _direction.x * (movement_speed * strafe_speed_multiplier), 12.0 * delta)
-					velocity.z = lerp(velocity.z, _direction.z * (movement_speed * strafe_speed_multiplier), 12.0 * delta)
 
+#     11. COMBAT INTERCEPTOR CHASSIS MODULES [PDF: 0.1.22]
 
 func initiate_melee_strike() -> void:
 	was_crouching_on_attack = is_crouching
@@ -705,661 +694,515 @@ func initiate_melee_strike() -> void:
 	can_dodge = false
 	attack_timer = attack_duration
 	hitbox_collision.disabled = false
-	if is_crouching:
-		toggle_crouch_state()
+	if is_crouching: toggle_crouch_state()
 
 func process_active_attack(_direction: Vector3, delta: float) -> void:
 	attack_timer -= delta
-	
-	# Cleaned variable tracking names to clear engine bottlenecks instantly!
 	var dampened_velocity: Vector3 = _direction * (movement_speed * attack_movement_dampening)
-	
 	velocity.x = lerp(velocity.x, dampened_velocity.x, acceleration * delta)
 	velocity.z = lerp(velocity.z, dampened_velocity.z, acceleration * delta)
-	
 	if attack_timer <= 0.0: 
 		is_attacking = false 
 		can_dodge = true 
-		if is_instance_valid(hitbox_collision): 
-			hitbox_collision.set_deferred("disabled", true) 
-		print("COMBAT SYSTEM: Axe strike animation concluded. Turning off weapon shapes.") 
+		if is_instance_valid(hitbox_collision): hitbox_collision.set_deferred("disabled", true) 
 		get_tree().create_timer(attack_cooldown).timeout.connect(func(): can_attack = true)
-		get_tree().create_timer(attack_cooldown).timeout.connect(func():
-			can_attack = true
-		)
 
 func _on_melee_hit_registered(collider: Node) -> void:
-	if collider == self or collider.name == "Smudge":
-		return
-		
-	# DUCK TYPING ENGAGED: Check if we are striking an intelligent guard clone
+	if collider == self or collider.name == "Smudge": return
 	if collider.is_in_group("EnemyGroup") and "current_phase" in collider:
 		var current_suspicion = collider.current_suspicion_value if "current_suspicion_value" in collider else 0.0
 		var guard_phase = collider.current_phase
-		
-		# --- CORE Blue-Print OVERRIDE Matrix ---
-		# GHOST PATH: If undetected OR if the guard is currently tied up struggling in a Bola,
-		# strike him exactly ONCE to trigger an instant cartoon knockout visual!
 		if current_suspicion < 10.0 or guard_phase == collider.PatrolPhase.BOLA_STRUGGLE or guard_phase == collider.PatrolPhase.INVESTIGATING:
-			print("STEALTH CRUNCH: Silent 1-hit takedown confirmed from the shadows!")
 			if collider.has_method("execute_stealth_stun"):
-				var push_direction: Vector3 = -global_transform.basis.z.normalized()
-				collider.execute_stealth_stun(push_direction)
-				grant_salvage_bonus()
+				collider.execute_stealth_stun(-global_transform.basis.z.normalized())
+			grant_salvage_bonus()
 			return
-			
-		# COMBAT PATH: If the enemy already has an active detection bar alert or is panicking,
-		#Thump/Posture meter armor engages, forcing you to break his stance first!
 		else:
-			print("COMBAT BRAWL: Enemy guard is alert! Engaging Thump/Posture meter checks.")
 			if collider.has_method("take_damage"):
-				var push_direction: Vector3 = -global_transform.basis.z.normalized()
-				if collider.get_method_argument_count("take_damage") >= 2:
-					collider.take_damage(1, push_direction)
-				else:
-					collider.take_damage(1)
-					
-	# --- ENVIRONMENTAL FALLBACK PATHWAY ---
-	# Handles hit connections against breakable walls or pottery props seamlessly
+				collider.take_damage(1, -global_transform.basis.z.normalized())
 	elif collider.has_method("take_damage"):
-		if collider.get_method_argument_count("take_damage") >= 2:
-			collider.take_damage(1, -global_transform.basis.z.normalized())
-		else:
-			collider.take_damage(1)
+		collider.take_damage(1, -global_transform.basis.z.normalized())
 
 func initiate_dodge_roll(_direction: Vector3) -> void:
 	is_rolling = true
 	can_dodge = false
 	can_attack = false
-	
-	# === FIXED LOCOMOTION COMPASS ALIGNMENT: Un-flips vertical downward rolls! ===
 	if _direction.length_squared() > 0.01:
 		roll_direction = _direction.normalized()
 	else:
-		# If no keys were held, default the roll direction to her current visual forward heading vector
-		if is_instance_valid(eira_body_mesh):
-			roll_direction = -eira_body_mesh.global_transform.basis.z.normalized()
-		else:
-			roll_direction = -global_transform.basis.z.normalized()
-			
+		roll_direction = -eira_body_mesh.global_transform.basis.z.normalized() if is_instance_valid(eira_body_mesh) else -global_transform.basis.z.normalized()
 	roll_timer = dodge_duration
-	
-	# Instantly snap her physical skeleton model to face her true roll heading direction vector
 	if is_instance_valid(eira_body_mesh):
-		var roll_look_angle: float = atan2(-roll_direction.x, -roll_direction.z)
-		eira_body_mesh.global_rotation.y = roll_look_angle
-		
+		eira_body_mesh.global_rotation.y = atan2(-roll_direction.x, -roll_direction.z)
 
 func process_active_roll(delta: float) -> void:
 	roll_timer -= delta
 	velocity.x = roll_direction.x * dodge_speed
 	velocity.z = roll_direction.z * dodge_speed
+	
 	if roll_timer <= 0.0:
 		is_rolling = false
 		velocity = Vector3.ZERO
-		get_tree().create_timer(dodge_cooldown).timeout.connect(func(): can_dodge = true)
-
-var is_parrying: bool = false
+		
+		# FIXED COMBAT FLOW: Restore her ability to attack immediately upon exiting a roll!
+		can_attack = true 
+		
+		# Keep her dodge on its standard designer category cooldown clock
+		get_tree().create_timer(dodge_cooldown).timeout.connect(func(): 
+			can_dodge = true
+		)
 
 func execute_shield_parry() -> void:
-	print("SHIELD SYSTEM: Deflection registered cleanly! Radiating parry pulse wave.")
-	
-	# Actively scan her surrounding 3D space radius coordinates for the attacking guard
 	var space_state = get_world_3d().direct_space_state
 	var parry_blast_sphere = PhysicsShapeQueryParameters3D.new()
-	
-	# Build an expanding 3-meter sphere blast to catch any nearby weapon hands
 	var sphere_shape = SphereShape3D.new()
 	sphere_shape.radius = 3.0
 	parry_blast_sphere.shape_rid = sphere_shape.get_rid()
 	parry_blast_sphere.transform = global_transform
-	
 	var intersections = space_state.intersect_shape(parry_blast_sphere)
 	for hit in intersections:
 		var obstacle_body = hit["collider"]
 		if is_instance_valid(obstacle_body) and obstacle_body.is_in_group("EnemyGroup"):
-			if obstacle_body.has_method("execute_disarm_parry_drop"):
-				# LAUNCH DISARM ATTACK SIGNAL DIRECTLY DOWN TO HIS BRAIN!
-				obstacle_body.execute_disarm_parry_drop()
+			if obstacle_body.has_method("execute_disarm_parry_drop"): obstacle_body.execute_disarm_parry_drop()
 	is_parrying = true
 	can_attack = false
 	can_dodge = false
 	if is_crouching: toggle_crouch_state()
-	
 	var parry_tween = create_tween()
 	parry_tween.tween_property(player_mesh, "position:z", -0.4, 0.1)
 	parry_tween.tween_property(player_mesh, "position:z", 0.0, 0.15)
-	
 	get_tree().create_timer(0.35).timeout.connect(func():
 		is_parrying = false
 		can_attack = true
 		can_dodge = true
-		print("PARRY OVER: Defensive shield lowered.")
 	)
-	
-var pebble_blueprint_file = preload("res://scenes/stealth_pebble.tscn")
-
-func execute_unified_gadget_fire() -> void:
-	if is_gadget_on_cooldown: return
-	
-	# 1. CALCULATE AIM DIRECTION
-	var target_facing_vector: Vector3 = -global_transform.basis.z.normalized()
-	
-	# Mouse Aiming Logic (with camera safety check)
-	if Input.get_connected_joypads().size() == 0:
-		if is_instance_valid(camera):
-			var mouse_pos: Vector2 = get_viewport().get_mouse_position()
-			var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
-			var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
-			var space_state = get_world_3d().direct_space_state
-			var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 100.0))
-			query.exclude = [self.get_rid()]
-			var result = space_state.intersect_ray(query)
-			
-			if not result.is_empty():
-				var dir_to_mouse: Vector3 = (result["position"] - global_position)
-				dir_to_mouse.y = 0.0
-				if dir_to_mouse.length_squared() > 0.1:
-					target_facing_vector = dir_to_mouse.normalized()
-					rotation.y = atan2(-target_facing_vector.x, -target_facing_vector.z)
-	else:
-		if controller_aim_direction.length_squared() > 0.1:
-			target_facing_vector = controller_aim_direction
-			rotation.y = atan2(-target_facing_vector.x, -target_facing_vector.z)
-
-	# 2. EXECUTE GADGET BASED ON CALCULATED DIRECTION
-	match current_selected_gadget:
-		GadgetType.PEBBLE:
-			if is_gadget_on_cooldown: return
-			can_throw_pebble = false
-			print("PEBBLE DISPATCH: Throwing distraction pebble!")
-			var pebble_instance = pebble_blueprint.instantiate() as RigidBody3D
-			pebble_instance.position = global_position + Vector3(0.0, 0.8, 0.0) + (target_facing_vector * 0.6)
-			get_parent().add_child(pebble_instance)
-			pebble_instance.add_collision_exception_with(self)
-			var throw_vector: Vector3 = (target_facing_vector + Vector3(0.0, 0.35, 0.0)).normalized()
-			if is_instance_valid(active_wind_zone):
-				var combined_wind_vector: Vector3 = (throw_vector + active_wind_zone.wind_direction.normalized()).normalized()
-				pebble_instance.apply_central_impulse(combined_wind_vector * (throw_impulse_force + active_wind_zone.wind_velocity_boost))
-			else:
-				pebble_instance.apply_central_impulse(throw_vector * throw_impulse_force)
-			start_gadget_cooldown(pebble_throw_cooldown)
-		GadgetType.BOLA:
-			if current_bola_ammo <= 0: return
-			var bola_instance = bola_blueprint.instantiate()
-			bola_instance.position = global_position + Vector3(0.0, 0.8, 0.0) + (target_facing_vector * 0.6)
-			get_parent().add_child(bola_instance)
-			if bola_instance.has_method("initialize_bola_flight"):
-				bola_instance.initialize_bola_flight(target_facing_vector)
-			current_bola_ammo -= 1
-			update_ammo_hud_display()
-			start_gadget_cooldown(1.0)
-
-		GadgetType.SLIME:
-			if slime_ammo <= 0: return
-			
-			print("GADGET ENGINE: Deploying Bioluminescent Dragon Slime Canister!")
-			var canister_instance = DRAGON_SLIME_CANISTER_SCENE.instantiate()
-			
-			# 1. CALCULATE TARGET DIRECTION & DISTANCE ON RE-EVALUATION MARKS
-			var mouse_pos: Vector2 = get_viewport().get_mouse_position()
-			var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
-			var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
-			var ground_plane = Plane(Vector3.UP, global_position.y)
-			var target_mouse_world_point = ground_plane.intersects_ray(ray_origin, ray_normal)
-			
-			var throw_direction: Vector3 = -global_transform.basis.z.normalized()
-			var active_lob_distance: float = 8.0
-			
-			if target_mouse_world_point:
-				var distance_vector: Vector3 = target_mouse_world_point - global_position
-				distance_vector.y = 0.0
-				active_lob_distance = distance_vector.length()
-				if active_lob_distance > 0.1:
-					throw_direction = distance_vector.normalized()
-					
-			active_lob_distance = clampf(active_lob_distance, 1.5, 14.0)
-			
-			# 2. ADAPTIVE LAUNCH STRENGTH CALIBRATION
-			var gravity_accel: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-			var adaptive_launch_strength: float = sqrt((active_lob_distance * gravity_accel) / sin(2.0 * deg_to_rad(45.0)))
-			
-			# 3. MOUNT TO SCENE ROOT FIRST TO ELIMINATE ENGINE DELAYS
-			get_tree().current_scene.add_child(canister_instance)
-			canister_instance.add_collision_exception_with(self)
-			
-			# 4. POSITION SECOND IN WORLD COORDINATES
-			var spawn_offset = Vector3(0.0, 0.8, 0.0) + (throw_direction * 0.6)
-			canister_instance.global_position = global_position + spawn_offset
-			
-			# 5. THROW CHASSIS VELOCITY IMPULSE APPLIED
-			var launch_velocity_vector: Vector3 = (throw_direction + Vector3(0.0, 0.45, 0.0)).normalized()
-			if canister_instance.has_method("apply_central_impulse"):
-				canister_instance.apply_central_impulse(launch_velocity_vector * adaptive_launch_strength)
-				
-			if "slime_ammo" in self: 
-				slime_ammo -= 1
-				
-			update_physical_belt_mesh_visibility()
-			print("GADGET ENGINE: Canister launched successfully onto target spot.")
-
-
-
-		GadgetType.BOMB:
-			# Keep your spine bomb placeholder block layout right here!
-			pass
-		_:
-			print("COMBAT MATRIX: Firing secondary tactical belt equipment index: ", current_selected_gadget)
-			start_gadget_cooldown(0.5)
-
 
 func start_gadget_cooldown(time: float) -> void:
 	is_gadget_on_cooldown = true
 	get_tree().create_timer(time).timeout.connect(func(): is_gadget_on_cooldown = false)
 
+
+#     12. DYNAMIC HUD AMMO DISPATCH TRACKERS [PDF: 0.1.20]
+
 func update_ammo_hud_display() -> void:
-	# 1. Update your legacy digital text tracking label safely if it is still on screen
+	if equipped_gadgets_deck.is_empty() or current_selected_gadget_index >= equipped_gadgets_deck.size(): return
+	var active_card = equipped_gadgets_deck[current_selected_gadget_index]
+	if not is_instance_valid(active_card): return
 	if is_instance_valid(ammo_label):
-		match current_selected_gadget:
-			GadgetType.PEBBLE: ammo_label.text = "Pebbles: INF"
-			GadgetType.BOLA: ammo_label.text = "Bolas: " + str(current_bola_ammo) + " / " + str(max_bola_ammo)
-			GadgetType.TRAP: ammo_label.text = "Stun Traps: " + str(trap_ammo)
-			GadgetType.SLIME: ammo_label.text = "Dragon Slime: " + str(slime_ammo)
-			GadgetType.BOMB: ammo_label.text = "Spine Bombs: " + str(bomb_ammo)
+		match active_card.type:
+			0: ammo_label.text = active_card.display_name + ": INF"
+			1: ammo_label.text = active_card.display_name + ": " + str(current_bola_ammo) + " / " + str(max_bola_ammo)
+			2: ammo_label.text = active_card.display_name + ": " + str(slime_ammo) + " / 4"
+			_: ammo_label.text = active_card.display_name + ": Locked"
 	update_physical_belt_mesh_visibility()
-			
-	# === 2. THE CHUNKY PHYSICAL GEAR AMMO ENFORCER ===
-	# Dynamically reveals or hides the 3D rope bundles hanging off Eira's belt mesh!
-	if is_instance_valid(hip_ammo_rig):
-		
-		# If pebbles are selected, hide all hip ropes to clean her active profiles
-		if current_selected_gadget == GadgetType.PEBBLE:
-			if is_instance_valid(bola_mesh_01): bola_mesh_01.visible = false
-			if is_instance_valid(bola_mesh_02): bola_mesh_02.visible = false
-			if is_instance_valid(bola_mesh_03): bola_mesh_03.visible = false
-		else:
-			# Turn them On or Off based directly on her actual current available ammo integers!
-			if is_instance_valid(bola_mesh_01): bola_mesh_01.visible = (current_bola_ammo >= 1)
-			if is_instance_valid(bola_mesh_02): bola_mesh_02.visible = (current_bola_ammo >= 2)
-			if is_instance_valid(bola_mesh_03): bola_mesh_03.visible = (current_bola_ammo >= 3)
-			
-	# === 2. THE PHYSICAL VIKING AMMO RIG ENFORCER (GODOT 4.7+) ===
-	# Dynamically reveals or hides the 3D rope models hanging off Eira's belt mesh!
-	if is_instance_valid(hip_ammo_rig):
-		# Fetch her individual coiled rope meshes inside the rig folder group [docs.godotengine.org]
-		var bola_01 = hip_ammo_rig.get_node_or_null("Bola_Mesh_01")
-		var bola_02 = hip_ammo_rig.get_node_or_null("Bola_Mesh_02")
-		var bola_03 = hip_ammo_rig.get_node_or_null("Bola_Mesh_03")
-		
-		# If pebbles are selected, hide all hip ropes to clean her combat profiles
-		if current_selected_gadget == GadgetType.PEBBLE:
-			if is_instance_valid(bola_01): bola_01.visible = false
-			if is_instance_valid(bola_02): bola_02.visible = false
-			if is_instance_valid(bola_03): bola_03.visible = false
-		else:
-			# Drive visibilities based directly on her current integer counts!
-			if is_instance_valid(bola_01): bola_01.visible = (current_bola_ammo >= 1)
-			if is_instance_valid(bola_02): bola_02.visible = (current_bola_ammo >= 2)
-			if is_instance_valid(bola_03): bola_03.visible = (current_bola_ammo >= 3)
-			
-	if is_instance_valid(ammo_label):
-		if current_selected_gadget == GadgetType.PEBBLE:
-			ammo_label.text = "Pebbles: INF"
-		else:
-			ammo_label.text = "Bolas: " + str(current_bola_ammo) + " / " + str(max_bola_ammo)
-			
-	# === COLD HARDBOUND VISIBILITY LOOP ===
-	# Completely stripped the pebble hiding code! 
-	# Your gorgeous 3D rope assets stay visible based purely on actual available ammo counts.
-	if is_instance_valid(bola_mesh_01): bola_mesh_01.visible = (current_bola_ammo >= 1)
-	if is_instance_valid(bola_mesh_02): bola_mesh_02.visible = (current_bola_ammo >= 2)
-	if is_instance_valid(bola_mesh_03): bola_mesh_03.visible = (current_bola_ammo >= 3)
+
+func update_physical_belt_mesh_visibility() -> void:
+	#     UNIFIED BOLA MESH VISIBILITY TRACKING
+	# Fetch our true live ammo count straight from our master data record dictionary
+	var _bola_ammo_count: int = 0
+	if current_ammo_deck_record.has("Bola"):
+		_bola_ammo_count = current_ammo_deck_record.get("Bola", 0)
+
+	# FIXED VISIBILITY MATRIX: Uses current_selected_gadget_index to prevent index drops!
+	# Index 2 represents your Pebble resource card slot cleanly
+	var _is_pebble_equipped: bool = (current_selected_gadget_index == 2)
+	var _should_render_bolas: bool = (_bola_ammo_count > 0) and not _is_pebble_equipped
 
 
-func _input(event: InputEvent) -> void:
+	if is_instance_valid(bola_mesh_01): bola_mesh_01.visible = _should_render_bolas and (_bola_ammo_count >= 1)
+	if is_instance_valid(bola_mesh_02): bola_mesh_02.visible = _should_render_bolas and (_bola_ammo_count >= 2)
+	if is_instance_valid(bola_mesh_03): bola_mesh_03.visible = _should_render_bolas and (_bola_ammo_count >= 3)
+		
+	# Process your other belt invention meshes cleanly
+	if is_instance_valid(trap_rig): trap_rig.visible = (trap_ammo > 0)
+	if is_instance_valid(slime_rig): slime_rig.visible = (slime_ammo > 0)
+	if is_instance_valid(pebble_rig): pebble_rig.visible = true
+	if is_instance_valid(bomb_rig): bomb_rig.visible = (bomb_ammo > 0)
 	
+	var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
+	var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
+	var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
+	
+	if current_locomotion_mode == LocomotionState.SLIDING or current_locomotion_mode == LocomotionState.AIR_PREP:
+		if back_mesh: back_mesh.visible = false
+		if hand_mesh: hand_mesh.visible = false
+		if feet_mesh: feet_mesh.visible = true
+	else:
+		if back_mesh: back_mesh.visible = true
+		if feet_mesh: feet_mesh.visible = false
+		if hand_mesh: hand_mesh.visible = is_parrying
+
+func clear_all_gadget_camera_priorities() -> void:
+	if is_instance_valid(exploration_pcam): exploration_pcam.priority = 30
+	if is_instance_valid(bola_pcam): bola_pcam.priority = 0
+	if is_instance_valid(trap_pcam): trap_pcam.priority = 0
+	if is_instance_valid(slime_pcam): slime_pcam.priority = 0
+	if is_instance_valid(pebble_pcam): pebble_pcam.priority = 0
+	if is_instance_valid(bomb_pcam): bomb_pcam.priority = 0
+
+func morph_camera_track_finish_line(target_marker: Marker3D) -> void:
+	if not is_instance_valid(target_marker) or not is_instance_valid(placeholder_hand_rig): return
+	var arm_cleanup = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	arm_cleanup.tween_property(placeholder_hand_rig, "position", target_marker.position, 0.12)
+
+func trigger_dedicated_pouch_camera_swap() -> void:
+	var bola_cam = get_node_or_null("Bola_PCAM")
+	var pebble_cam = get_node_or_null("Pebble_PCAM")
+	var slime_cam = get_node_or_null("Slime_PCAM")
+	if is_instance_valid(bola_cam): bola_cam.priority = 0
+	if is_instance_valid(pebble_cam): pebble_cam.priority = 0
+	if is_instance_valid(slime_cam): slime_cam.priority = 0
+	match current_selected_gadget_index:
+		0: if is_instance_valid(bola_cam): bola_cam.priority = 25
+		1: if is_instance_valid(pebble_cam): pebble_cam.priority = 25
+		2: if is_instance_valid(slime_cam): slime_cam.priority = 25
 
 
-		# Mouse Scroll Wheel Selector Hook
-	if radial_menu_active and event is InputEventMouseButton and event.is_pressed():
+#     13. UNHANDLED INPUT TARGET LOCK ENGINES (_UNHANDLED_INPUT) [PDF: 0.1.21]
+
+func _unhandled_input(event: InputEvent) -> void:
+	
+	if event.is_action_pressed("combat_counter_button") and not radial_menu_active:
+		execute_shield_counter_intercept()
+		get_viewport().set_input_as_handled()
+		return
+		
+	# 2. THE MELEE STRIKE GAGE: Triggers standard thumps or silent shadow grapples
+	elif event.is_action_pressed("attack_melee") and not radial_menu_active:
+		execute_dynamic_melee_strike_pipeline()
+		get_viewport().set_input_as_handled()
+		return
+	
+	
+	# PATH A: Press F to engage her tactical wind ribbon indicators or standalone placements! [PDF: 0.1.13]
+	if event.is_action_pressed("use_gadget") and not radial_menu_active:
+		is_actively_aiming_gadget = true
+		bola_charge_timer = 0.0
+		
+		# ISOLATED PLACEMENT DISPATCH: Index 1 targets your Tripwire Trap resource deck card slot!
+		if current_selected_gadget_index == 1 and has_node("Systems/TrapPlacementSystem"):
+			# Safety check: Only execute deployment if she actually has items left inside her inventory!
+			if current_ammo_deck_record.get("Tripwire Trap", 0) > 0:
+				$Systems/TrapPlacementSystem.execute_final_deployment()
+			else:
+				$Systems/TrapPlacementSystem.stop_aiming_and_cancel()
+				
+			bola_charge_timer = 0.0
+			update_physical_belt_mesh_visibility()
+			return
+		
+	# PATH B: Release F to safely fire the gadget payload under strict isolated gates! [PDF: 0.1.34]
+	elif event.is_action_released("use_gadget") and is_actively_aiming_gadget:
+		
+		# === FIXED GADGET FIRE PIPELINE: DELAY RE-ROTATION OVERWRITES ===
+		# We clear her aiming state indicators, but do NOT force controller_aim_direction 
+		# back to a flat forward reset vector until the active slot code finishes discharging!
+		is_actively_aiming_gadget = false
+		
+		var aim_node = get_node_or_null("Systems/AimController")
+		if is_instance_valid(aim_node):
+			aim_node.active_input_mode_flag = "MOUSE"
+			
+		# =============================================================================
+		#     SLOT INDEX 1: TRIPWIRE TRAP PLACEMENT INTERCEPT
+		# =============================================================================
+		if current_selected_gadget_index == 1 and has_node("Systems/TrapPlacementSystem"):
+			$Systems/TrapPlacementSystem.execute_final_deployment()
+			bola_charge_timer = 0.0
+			is_controller_actively_aiming = false
+			controller_aim_direction = -global_transform.basis.z.normalized()
+			update_physical_belt_mesh_visibility()
+			return
+			
+		# =============================================================================
+		#     SLOT INDEX 5: UNIFIED RESIN LAUNCHER ENGINE
+		# =============================================================================
+		if current_selected_gadget_index == 5:
+			var active_card = equipped_gadgets_deck[current_selected_gadget_index]
+			if is_instance_valid(active_card) and active_card.projectile_scene_file:
+				
+				# Call our sanitized 360-degree aiming direction look vector!
+				var verified_launch_heading: Vector3 = get_validated_aim_direction()
+				
+				var fluid_instance = active_card.projectile_scene_file.instantiate() as Node3D
+				get_tree().current_scene.add_child(fluid_instance)
+				
+				# Position outside self capsule to block self-collision locks [PDF: 0.1.17]
+				var spawn_launch_origin = global_position + Vector3(0.0, 0.8, 0.0) + (verified_launch_heading * 0.7)
+				fluid_instance.global_position = spawn_launch_origin
+				fluid_instance.set("move_direction", verified_launch_heading)
+				
+				var heat_ratio_multiplier: float = clampf(bola_charge_timer / BOLA_MAX_CHARGE_TIME, 0.25, 1.0)
+				fluid_instance.set("current_heat_ratio", heat_ratio_multiplier)
+				
+				if heat_ratio_multiplier >= 1.0:
+					fluid_instance.set("flight_speed", 25.0)
+					print("🔥 LAUNCHER: High-pressure boiling amber resin discharged!")
+				else:
+					print(" Launcher: Low-temperature fluid resin discharged.")
+					
+				if current_ammo_deck_record.has(active_card.display_name):
+					current_ammo_deck_record[active_card.display_name] -= 1
+					launcher_ammo = current_ammo_deck_record[active_card.display_name]
+			
+			# Flush weapon parameters safely AFTER the projectile has finished its flight setup
+			bola_charge_timer = 0.0
+			is_controller_actively_aiming = false
+			controller_aim_direction = -global_transform.basis.z.normalized()
+			update_ammo_hud_display()
+			update_physical_belt_mesh_visibility()
+			return
+		
+	# Mouse wheel scrolling trackers run unblocked
+	if is_radial_menu_open and radial_menu_active and event is InputEventMouseButton and event.is_pressed():
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			cycle_backpack_gadget(-1) # Moves left instantly
-			manage_virtual_camera_priorities(menu_highlighted_gadget)
+			cycle_backpack_gadget(-1) # Scrolls UP towards Bola (0) and stops rigidly!
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			cycle_backpack_gadget(1)  # Moves right instantly
-			manage_virtual_camera_priorities(menu_highlighted_gadget)
+			cycle_backpack_gadget(1)  # Scrolls DOWN towards Launcher (5) and stops rigidly!
 			get_viewport().set_input_as_handled()
+
+
+#     14. UNIFIED DIRECT INPUT HANDLERS (_INPUT) [PDF: 0.1.22]
+
+func _input(event: InputEvent) -> void:
+	# Check both mouse click triggers and gamepad weapon attack triggers symmetrically
+	var is_attack_triggered: bool = event.is_action_pressed("attack_melee") or (event is InputEventJoypadButton and event.is_action_pressed("attack_melee"))
 	
-	# === 1. MELEE ATTACK CONTEXTUAL REDIRECTOR (UPDATED CHASSIS MAP) ===
-	if event.is_action_pressed("attack_melee"):
+	if is_attack_triggered:
 		if event.is_echo(): return
+		if radial_menu_active or is_radial_menu_open: return
 		
-		# THE ABSOLUTE PLAYER-SIDE HARD LOCK: 
-		# Only allow a stealth execution intercept if Eira is actively crouching or sliding!
+		# === THE AIM CANCEL SHUTTER GATE ===
+		# Tapping attack while holding down aim will reset her stance, clear the flags,
+		# and hide pointers instantly instead of swinging her sword!
+		if is_actively_aiming_gadget or is_controller_actively_aiming:
+			is_actively_aiming_gadget = false
+			is_controller_actively_aiming = false
+			
+			# Clear out our isolated standalone trap placement nodes instantly!
+			if has_node("Systems/TrapPlacementSystem"):
+				$Systems/TrapPlacementSystem.stop_aiming_and_cancel()
+				
+			if is_instance_valid(indicator_rig):
+				var lob_visual_node = indicator_rig.get_node_or_null("Lob_Line_Pointer/Line_Visual")
+				var flat_visual_node = indicator_rig.get_node_or_null("Aim_Line_Pointer/Line_Visual")
+				if is_instance_valid(lob_visual_node): lob_visual_node.visible = false
+				if is_instance_valid(flat_visual_node): flat_visual_node.visible = false
+			get_viewport().set_input_as_handled()
+			return 
+			
+		# Standard combat execution path (runs only if pointers were already hidden)
 		if is_crouching and current_locomotion_mode != LocomotionState.SPRINTING:
 			var target_guard: Node3D = null
 			var guards = get_tree().get_nodes_in_group("EnemyGroup")
-			
 			for guard in guards:
-				if is_instance_valid(guard) and "takedown_label_3d" in guard:
-					# Check if the guard's prompt label node is actively visible right now
-					if guard.takedown_label_3d and guard.takedown_label_3d.visible:
-						target_guard = guard
-						break
-						
-			if is_instance_valid(target_guard) and "takedown_label_3d" in target_guard:
-				if "DANGER" in target_guard.takedown_label_3d.text:
-					print("STEALTH BLOCKED: Guard is actively watched. Initiating open brawl!")
-					# Let the code fall through normally below to fire your regular melee strike!
-				else:
-					print("STEALTH CRUNCH: Symmetrical check passed! Executing 1-hit knockout.")
-					if target_guard.has_method("execute_stealth_stun"):
-						var push_vector: Vector3 = -global_transform.basis.z.normalized()
-						target_guard.execute_stealth_stun(push_vector)
-					return # 👈 Exit early! This blocks her standard tool swinging animation layers.
-					
-		# FALLBACK: Execute a normal axe swing if standing or if the stealth strike is blocked
-		if can_attack and not is_rolling:
-			initiate_melee_strike()
+				if is_instance_valid(guard) and "takedown_label_3d" in guard and guard.takedown_label_3d.visible:
+					target_guard = guard
+					break
+			if is_instance_valid(target_guard) and target_guard.has_method("execute_stealth_stun"):
+				target_guard.execute_stealth_stun(controller_aim_direction if is_controller_actively_aiming else -global_transform.basis.z.normalized())
+				return
+		if can_attack and not is_rolling: initiate_melee_strike()
 
-	# === 2. SPRINT TOGGLE CONTROL (ISOLATED RUN SYSTEM) ===
 	if event.is_action_pressed("sprint"):
 		if event.is_echo(): return
-		
-		# If sliding, completely block Shift from doing anything! This prevents accidental cancel inputs.
-		if current_locomotion_mode == LocomotionState.SLIDING or current_locomotion_mode == LocomotionState.AIR_PREP or current_locomotion_mode == LocomotionState.STOMP_EXIT:
-			return
-			
-		# Standard locomotion state engine shifts
+		if current_locomotion_mode == LocomotionState.SLIDING or current_locomotion_mode == LocomotionState.AIR_PREP or current_locomotion_mode == LocomotionState.STOMP_EXIT: return
 		if current_locomotion_mode == LocomotionState.SPRINTING:
 			current_locomotion_mode = LocomotionState.STANDARD
 		else:
-			if not is_crouching and not is_climbing and not is_rolling:
-				current_locomotion_mode = LocomotionState.SPRINTING
+			if not is_crouching and not is_climbing and not is_rolling: current_locomotion_mode = LocomotionState.SPRINTING
 
-
-# === 3. UNIFIED SPRINT-SLIDE & WALK-CROUCH INTERCEPTOR AXIS ===
 	if event.is_action_pressed("stealth_crouch"):
 		if event.is_echo(): return
 		if not is_rolling and not is_attacking and not is_climbing:
-			
 			match current_locomotion_mode:
 				LocomotionState.SPRINTING:
-				# Forcefully project her up into the air on frame one!
-					velocity.y = 5.2 
+					velocity.y = 5.2
 					enter_air_prep_state()
 				LocomotionState.SLIDING:
 					execute_slide_cancel()
 				_:
 					toggle_crouch_state()
 
-	# === 4. BODY DRAG & ENVIRONMENT SALVAGE ===
 	if event.is_action_pressed("interact") and not radial_menu_active:
-		handle_drag_interaction()
+		# Check if she is standing near a valid resin climbing ledge structure first!
+		var active_structures = get_tree().get_nodes_in_group("ResinStructure")
+		var handled_climb_action: bool = false
 		
-		# Proactively query a localized 3D sphere radius check to locate down guards
+		for structure in active_structures:
+			if is_instance_valid(structure) and structure.get("is_player_inside_climb_zone") == true:
+				if structure.has_method("execute_climb_mantle_dispatch"):
+					structure.execute_climb_mantle_dispatch()
+					handled_climb_action = true
+					break
+
+		if handled_climb_action:
+			get_viewport().set_input_as_handled()
+			return
+
+		# Symmetrical fallback: Runs her standard dead guard item looting code if not climbing! [PDF: 0.1.41]
+		handle_drag_interaction()
 		var space_state = get_world_3d().direct_space_state
 		var loot_query = PhysicsShapeQueryParameters3D.new()
 		var search_sphere = SphereShape3D.new()
-		search_sphere.radius = 2.0 # 2-meter physical arm search range footprint
+		search_sphere.radius = 2.0
 		loot_query.shape_rid = search_sphere.get_rid()
 		loot_query.transform = global_transform
 		loot_query.exclude = [self.get_rid()]
-		
 		var contact_points = space_state.intersect_shape(loot_query)
 		for hit in contact_points:
 			var body_node = hit["collider"]
 			if is_instance_valid(body_node) and body_node.is_in_group("EnemyGroup"):
 				if "is_currently_lootable" in body_node and body_node.is_currently_lootable:
-					# Enforce the single-loot security shutter lock
 					body_node.is_currently_lootable = false
 					body_node.has_already_been_looted = true
-					
-					# Extract inventory resource payouts
-					var items_found_text: String = ""
+					var _items_found_text: String = ""
 					if "bola_ammo_to_award" in body_node and current_bola_ammo < max_bola_ammo:
 						current_bola_ammo = clamped_addition_value(current_bola_ammo, body_node.bola_ammo_to_award, max_bola_ammo)
-						items_found_text += " +1 Bola Trap"
+						_items_found_text += " +1 Bola Trap"
 					if "matches_to_award" in body_node and "current_matches" in self:
 						self.current_matches += body_node.matches_to_award
-						items_found_text += " +1 Campfire Match"
-					print("LOOT PROGRESS: Extracted parts: ", items_found_text)
-					
-					# Refresh display trackers
+						_items_found_text += " +1 Campfire Match"
 					update_ammo_hud_display()
 					if is_instance_valid(ammo_label):
 						var punch = create_tween()
 						ammo_label.scale = Vector2(1.3, 1.3)
 						punch.tween_property(ammo_label, "scale", Vector2(1.0, 1.0), 0.15).set_trans(Tween.TRANS_ELASTIC)
 					if "alert_label" in body_node and is_instance_valid(body_node.alert_label):
-						body_node.alert_label.text = "✖ EMPTY ✖"
+						body_node.alert_label.text = "EMPTY"
 						body_node.alert_label.modulate = Color("#888888")
 					break
 
-	# === 5. GADGET USE (HOLD TO AIM SHUTTER) ===
-	if event.is_action_pressed("use_gadget"):
-		if event.is_echo(): return
-		if not is_rolling and not is_attacking and not is_gadget_on_cooldown:
-			is_actively_aiming_gadget = true
-
-	elif event.is_action_released("use_gadget"):
-		if is_actively_aiming_gadget:
-			is_actively_aiming_gadget = false
-			execute_unified_gadget_fire()
-			
-			is_bola_on_fire_cooldown = true
-			get_tree().create_timer(0.25).timeout.connect(func(): is_bola_on_fire_cooldown = false)
-
-	# === 6. PASSIVE BACKPACK SHIELD PARRY ===
 	if event.is_action_pressed("shield_parry"):
 		if event.is_echo(): return
-		if not is_rolling and not is_attacking and not is_climbing:
+		if radial_menu_active or is_radial_menu_open: return
+		
+		# BYPASS VALVE: If she is aiming, allow her triggers to pass raw 
+		# float axis depth data down without breaking the event thread!
+		if is_actively_aiming_gadget or is_controller_actively_aiming:
+			if event is InputEventJoypadMotion or event.is_action("shield_parry"):
+				return # Let the raw analog data slide down to your distance modifiers safely!
+				
+		if not is_rolling and not is_attacking and not is_climbing: 
 			execute_shield_parry()
 
-# === 7. WEAPON WHEEL SWAP MENU ===
-	if event.is_action_pressed("swap_weapon"):
+	if event.is_action_pressed("swap_gadget"):
 		if event.is_echo(): return
+		
+		# FIXED INVENTORY ACTION VALVE: Block gadget selection swaps if she is actively aiming!
+		if is_actively_aiming_gadget or is_controller_actively_aiming:
+			print("🎒 INVENTORY SYSTEM: Weapon swapping blocked while holding aim targets!")
+			return
+			
 		if not is_rolling and not is_climbing and current_locomotion_mode != LocomotionState.SLIDING:
 			is_radial_menu_open = true
 			radial_menu_active = true
-			original_mesh_rotation_y = global_rotation.y 
-			Engine.time_scale = 0.15 
-			
-			# Ensure the placeholder arm model wakes up and becomes visible instantly!
-			if is_instance_valid(placeholder_hand_rig):
-				placeholder_hand_rig.visible = true
-			
-			# === CONTEXT-AWARE BACK-TURN PRESENTATION ENGINES ===
+			original_mesh_rotation_y = global_rotation.y
+			Engine.time_scale = 0.15
+			if is_instance_valid(placeholder_hand_rig): placeholder_hand_rig.visible = true
 			if is_instance_valid(eira_body_mesh) and is_instance_valid(camera):
 				var camera_basis: Transform3D = camera.global_transform
 				var camera_forward: Vector3 = -camera_basis.basis.z
 				camera_forward.y = 0.0
 				camera_forward = camera_forward.normalized()
-				
-				# Determine her exact active global heading facing direction angle
-				var current_mesh_forward: Vector3 = -eira_body_mesh.global_transform.basis.z
-				current_mesh_forward.y = 0.0
-				current_mesh_forward = current_mesh_forward.normalized()
-				
-				# Calculate the dot product to see if she is already facing away from the camera view window!
-				# A dot product value greater than 0.3 means her back is already pointing toward the screen lens mesh
-				var is_back_already_exposed: bool = current_mesh_forward.dot(camera_forward) > 0.3
-				
-				# Baseline target angle faces her back straight at your screen normal vectors
+				var current_mesh_forward_vec: Vector3 = -eira_body_mesh.global_transform.basis.z
+				current_mesh_forward_vec.y = 0.0
+				current_mesh_forward_vec = current_mesh_forward_vec.normalized()
+				var is_back_already_exposed: bool = current_mesh_forward_vec.dot(camera_forward) > 0.3
 				var target_angle: float = atan2(camera_forward.x, camera_forward.z) + PI
-				
-				if is_back_already_exposed:
-					# If her gear pouches are already perfectly visible, maintain her posture heading!
-					target_angle = eira_body_mesh.global_rotation.y
-				
-				# FIXED SLOW-MOTION TUNING: Padded transition glide speed (Feels heavy and deliberate!)
+				if is_back_already_exposed: target_angle = eira_body_mesh.global_rotation.y
 				var entrance_twist = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-				# Removing Engine.time_scale from the calculation divider forces the tween to blend at normal human speed!
 				entrance_twist.tween_property(eira_body_mesh, "global_rotation:y", target_angle, 0.45)
-			
-			manage_virtual_camera_priorities(current_selected_gadget)
+				manage_virtual_camera_priorities(current_selected_gadget)
 
-			
-	if event.is_action_released("swap_weapon"):
+
+	if event.is_action_released("swap_gadget"):
 		if is_radial_menu_open:
 			current_selected_gadget = menu_highlighted_gadget
 			is_radial_menu_open = false
-			radial_menu_active = false 
-			Engine.time_scale = 1.0 
+			radial_menu_active = false
+			Engine.time_scale = 1.0
 			clear_all_gadget_camera_priorities()
 			update_physical_belt_mesh_visibility()
-			
-			# === SYNCHRONIZED RETRACTION EXIT TWEEN ===
 			if is_instance_valid(eira_body_mesh):
 				var mesh_reset = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-				# Blends her body back to her normal running direction over 0.22 seconds
 				mesh_reset.tween_property(eira_body_mesh, "rotation:y", 0.0, 0.22)
-				
-				# THE PERFECT RETRACTOR FUNCTION HOOK:
-				# This callback fires the exact microsecond her body finishes straightening out,
-				# hiding the neon hand indicator node cleanly when you return to standard overworld exploration!
 				mesh_reset.tween_callback(func():
-					if is_instance_valid(placeholder_hand_rig):
-						placeholder_hand_rig.visible = false
-						print("INVENTORY ENGINE: Selection concluded. Arm rig hidden.")
+					if is_instance_valid(placeholder_hand_rig): placeholder_hand_rig.visible = false
 				)
 
+func clamped_addition_value(current: int, incoming: int, limit: int) -> int: return min(current + incoming, limit) as int
+func add_treasure_key_to_inventory() -> void: carried_treasure_keys_count += 1
 
-
-func clamped_addition_value(current: int, incoming: int, limit: int) -> int:
-	return min(current + incoming, limit) as int
-
-
-		
-func add_treasure_key_to_inventory() -> void:
-	carried_treasure_keys_count += 1
-	print("PLAYER BAG: Treasure keys carried: ", carried_treasure_keys_count)
-	
 func evaluate_radial_wheel_joystick_navigation() -> void:
 	if not radial_menu_active: return
-	
-	# Read the Right Joystick via your existing "look" action inputs
 	var look_vector_x: float = Input.get_action_strength("look_right") - Input.get_action_strength("look_left")
-	
 	if abs(look_vector_x) > 0.6:
 		if not controller_joystick_debounce:
 			controller_joystick_debounce = true
-			var direction: int = 1 if look_vector_x > 0 else -1
-			
-			cycle_backpack_gadget(direction)
+			cycle_backpack_gadget(1 if look_vector_x > 0 else -1)
 			manage_virtual_camera_priorities(menu_highlighted_gadget)
 	else:
-		controller_joystick_debounce = false # Resets when stick returns to center # Resets when stick returns to center
-		
-func grant_salvage_bonus() -> void:
-	if current_bola_ammo < max_bola_ammo:
-		current_bola_ammo += 1
-		
-		# 1. Visual Popup
-		var label = Label3D.new()
-		label.text = "+1 BOLA"
-		add_child(label)
-		label.global_position = global_position + Vector3(0, 2.0, 0)
-		
-		# 2. Tween (Animation)
-		var tween = create_tween()
-		tween.tween_property(label, "position:y", 3.0, 0.5)
-		tween.parallel().tween_property(label, "modulate:a", 0.0, 0.5)
-		tween.tween_callback(label.queue_free)
-		
-		# 3. Audio (Ensure you have a sound file path)
-		var audio = AudioStreamPlayer3D.new()
-		audio.stream = load("res://assets/sounds/metal_clink.wav")
-		add_child(audio)
-		audio.play()
-		audio.finished.connect(audio.queue_free)
+		controller_joystick_debounce = false
 
+func grant_salvage_bonus() -> void:
+	if current_bola_ammo < max_bola_ammo: current_bola_ammo += 1
 
 func handle_drag_interaction() -> void:
 	if is_instance_valid(dragged_body):
-		# DROP
 		dragged_body.reparent(get_tree().root)
 		dragged_body.velocity = Vector3.ZERO
 		dragged_body = null
 	else:
-		# SEARCH AND DRAG
 		for body in get_tree().get_nodes_in_group("EnemyGroup"):
 			if body.global_position.distance_to(global_position) < 2.0:
-				# We assume 2 is your STUNNED enum/constant
 				if "current_phase" in body and body.current_phase == 2:
 					dragged_body = body
-					dragged_body.reparent(self) # Follows player
-					dragged_body.position = Vector3(0, 0, -1.5) # Behind player
-					# IMPORTANT: Add body to a specific group so AI sees it
+					dragged_body.reparent(self)
+					dragged_body.position = Vector3(0, 0, -1.5)
 					dragged_body.add_to_group("UnconsciousEnemy")
 					break
-					
+
 func _on_cascade_sensor_body_entered(body: Node) -> void:
-	# HIGH-UTILITY SAFE CHECK: Scans scene groups, ignoring internal node name variations!
 	if body.is_in_group("EnemyGroup") and body != self:
-		if body.has_method("execute_cascade_stumble_fall"):
-			body.execute_cascade_stumble_fall()
+		if body.has_method("execute_cascade_stumble_fall"): body.execute_cascade_stumble_fall()
 
 func process_sliding_movement(delta: float) -> void:
 	var dynamic_friction: float = base_slide_friction + 0.85
 	var slope_angle: float = 0.0
-	var slope_down_direction: Vector3 = Vector3.ZERO
-	
+	var slope_down_direction: Vector3 = Vector3.DOWN
 	if is_instance_valid(ground_snapper) and ground_snapper.is_colliding():
 		var floor_normal: Vector3 = ground_snapper.get_collision_normal()
 		slope_down_direction = Vector3.DOWN.slide(floor_normal).normalized()
 		slope_angle = Vector3.UP.angle_to(floor_normal)
-		
-		var forward_heading := -global_transform.basis.z
-		var moving_uphill: bool = forward_heading.dot(slope_down_direction) < 0.0
-		
-		if slope_angle > 0.05:
-			if moving_uphill:
-				dynamic_friction += (slope_angle * 18.0)
-			else:
-				velocity += slope_down_direction * slope_angle * 24.0 * delta
-				velocity -= floor_normal * 4.0
-
-	# === FIXED CAMERA DIRECTION OVERHAUL (MATCHES process_standard_movement) ===
+	var forward_heading := -global_transform.basis.z
+	if forward_heading.dot(slope_down_direction) < 0.0:
+		if slope_angle > 0.05: dynamic_friction += (slope_angle * 18.0)
+	else:
+		if slope_angle > 0.05: velocity += slope_down_direction * slope_angle * 24.0 * delta
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if input_vector.length_squared() > 0.01 and is_instance_valid(camera):
 		var cam_basis: Transform3D = camera.global_transform
 		var right_dir: Vector3 = cam_basis.basis.x
-		var forward_dir: Vector3 = -cam_basis.basis.z # FIXED VERTICAL INVERSION MATCH
-		
+		var forward_dir: Vector3 = -cam_basis.basis.z
 		right_dir.y = 0.0
 		forward_dir.y = 0.0
-		right_dir = right_dir.normalized()
-		forward_dir = forward_dir.normalized()
-		
-		var target_steering: Vector3 = (right_dir * input_vector.x) - (forward_dir * input_vector.y)
-		
+		var target_steering: Vector3 = (right_dir.normalized() * input_vector.x) - (forward_dir.normalized() * input_vector.y)
 		if target_steering.length() > 0.01:
 			var current_speed := velocity.length()
 			velocity = velocity.lerp(target_steering.normalized() * current_speed, slide_steer_speed * delta)
-			
-			if is_instance_valid(eira_body_mesh):
-				var look_angle: float = atan2(-velocity.x, -velocity.z)
-				eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, look_angle, 8.0 * delta)
-
+	if is_instance_valid(eira_body_mesh):
+		var look_angle: float = atan2(-velocity.x, -velocity.z)
+		eira_body_mesh.global_rotation.y = lerp_angle(eira_body_mesh.global_rotation.y, look_angle, 8.0 * delta)
 	velocity.x = move_toward(velocity.x, 0.0, dynamic_friction * slide_friction_decay * delta)
 	velocity.z = move_toward(velocity.z, 0.0, dynamic_friction * slide_friction_decay * delta)
 	move_and_slide()
+	if Vector3(velocity.x, 0, velocity.z).length() < 3.8: enter_stomp_exit_state()
 	
-	if Vector3(velocity.x, 0, velocity.z).length() < 3.8:
-		enter_stomp_exit_state()
-
-
 func enter_air_prep_state() -> void:
 	current_locomotion_mode = LocomotionState.AIR_PREP
-	velocity.y = 5.2 
-	
-	var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-	var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
-	if back_mesh: back_mesh.visible = false
-	if hand_mesh: hand_mesh.visible = false
-	
+	velocity.y = 5.2
 	update_physical_belt_mesh_visibility()
 
 func enter_sliding_state() -> void:
@@ -1367,19 +1210,14 @@ func enter_sliding_state() -> void:
 	is_crouching = false
 	update_player_size(true)
 	
-	var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-	var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
-	var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
-	
-	if back_mesh: back_mesh.visible = false
-	if hand_mesh: hand_mesh.visible = false
-	if feet_mesh: feet_mesh.visible = true
-	
-	# === FIXED CAMERA-RELATIVE IMPULSE INITIALIZATION BOOST ===
-	# We dynamically calculate your input directions right at the frame split second you launch the slide!
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var launch_direction := -global_transform.basis.z # Default fallback heading
 	
+	# FIXED SLIDE MOMENTUM: Baseline direction uses her current physical movement vector!
+	var launch_direction: Vector3 = velocity.normalized()
+	if launch_direction.length_squared() < 0.01:
+		launch_direction = -global_transform.basis.z.normalized()
+		
+	# If keys are held, let steering vectors alter her launch corridor cleanly
 	if input_vector.length_squared() > 0.01 and is_instance_valid(camera):
 		var cam_basis: Transform3D = camera.global_transform
 		var right_dir: Vector3 = cam_basis.basis.x
@@ -1387,66 +1225,40 @@ func enter_sliding_state() -> void:
 		right_dir.y = 0.0
 		forward_dir.y = 0.0
 		var target_launch: Vector3 = (right_dir.normalized() * input_vector.x) - (forward_dir.normalized() * input_vector.y)
-		if target_launch.length_squared() > 0.01:
+		if target_launch.length_squared() > 0.01: 
 			launch_direction = target_launch.normalized()
 			
-	# Inject the speed boost vector directly along your true active heading vector
-	velocity.x = launch_direction.x * minimum_slide_boost
-	velocity.z = launch_direction.z * minimum_slide_boost
+	# Preserve and boost active momentum vectors cleanly across world ramp tile matrices
+	var horizontal_boost_speed: float = max(velocity.length() * 1.1, minimum_slide_boost)
+	velocity.x = launch_direction.x * horizontal_boost_speed
+	velocity.z = launch_direction.z * horizontal_boost_speed
 	velocity.y = 0.0
-			
+	
 	spawn_footstep_dust_cloud(true)
+	update_physical_belt_mesh_visibility()
 
 func enter_stomp_exit_state() -> void:
 	current_locomotion_mode = LocomotionState.STOMP_EXIT
 	is_crouching = false
 	update_player_size(false)
-	
-	velocity.y = 6.2 
-	
+	velocity.y = 6.2
 	var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-	var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
 	var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
-	
-	if feet_mesh: feet_mesh.visible = false
-	if hand_mesh: hand_mesh.visible = false
-	
 	var flying_shield_fx := FLYING_SHIELD_SCENE.instantiate()
 	get_tree().current_scene.add_child(flying_shield_fx)
-	
-	if feet_mesh and back_mesh:
-		var safe_launch_position = feet_mesh.global_position + Vector3(0.0, 0.4, 0.2)
-		flying_shield_fx.scale = Vector3(1.0, 1.0, 1.0)
-		flying_shield_fx.launch(safe_launch_position, self, velocity * 0.35)
-		
-		get_tree().create_timer(0.45).timeout.connect(func():
-			if is_instance_valid(back_mesh) and current_locomotion_mode != LocomotionState.SLIDING:
-				back_mesh.visible = true
-		)
-		
+	if feet_mesh: flying_shield_fx.launch(feet_mesh.global_position + Vector3(0, 0.4, 0.2), self, velocity * 0.35)
+	get_tree().create_timer(0.45).timeout.connect(func(): if is_instance_valid(back_mesh) and current_locomotion_mode != LocomotionState.SLIDING: back_mesh.visible = true)
 	current_locomotion_mode = LocomotionState.STANDARD
-
+	update_physical_belt_mesh_visibility()
 
 func execute_slide_cancel() -> void:
 	var is_ceiling_blocked: bool = false
-	var ceiling_node = get_node_or_null("CeilingCheck")
-	if ceiling_node and ceiling_node.is_colliding():
-		is_ceiling_blocked = true
-		
+	if has_node("CeilingCheck") and $CeilingCheck.is_colliding(): is_ceiling_blocked = true
 	if not is_ceiling_blocked:
 		update_player_size(false)
 		is_crouching = false
 		current_locomotion_mode = LocomotionState.STANDARD
-		
-		var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-		var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
-		var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
-		
-		if feet_mesh: feet_mesh.visible = false
-		if hand_mesh: hand_mesh.visible = false
-		if back_mesh: back_mesh.visible = true
 		velocity.y = 0.0
-		
 		var true_max_sprint_speed: float = movement_speed * sprint_speed_multiplier
 		var horizontal_vel = Vector3(velocity.x, 0.0, velocity.z)
 		if horizontal_vel.length() > true_max_sprint_speed:
@@ -1456,61 +1268,66 @@ func execute_slide_cancel() -> void:
 	else:
 		is_crouching = true
 		current_locomotion_mode = LocomotionState.CROUCHING
-		var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-		var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
-		var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
-		
-		if feet_mesh: feet_mesh.visible = false
-		if hand_mesh: hand_mesh.visible = false
-		if back_mesh: back_mesh.visible = true
 		velocity.y = 0.0
+	update_physical_belt_mesh_visibility()
+
+
+#     15. VIRTUAL PCAM CAMERA PRIORITY CONTROLLERS [PDF: 0.1.44]
 
 func cycle_backpack_gadget(direction: int) -> void:
-	# Convert our current active enum selection state straight into an index integer
-	var current_index: int = int(menu_highlighted_gadget)
+	var _total_available_slots: int = 5 # Total number of gadget items on her belt
+	var total_slots_count: int = equipped_gadgets_deck.size()
+	if total_slots_count <= 0: return
 	
-	# Calculate your target destination index position
-	var target_index: int = current_index + direction
+	# HARD CLAMP BOUNDARY CHECK: Calculates the exact next slot step
+	var next_intended_index: int = current_selected_gadget_index + direction
 	
-	# === THE NO-LOOP GATED ENTRY SYSTEM ===
-	# If scrolling moves the cursor past the far left (0) or far right (4),
-	# intercept the event and exit immediately without altering any variables!
-	if target_index < 0 or target_index > 4:
-		# Flash a console note for visual debugging confirmation
-		print("INVENTORY ENGINE: Hit a terminal boundary wall! Use opposite input direction.")
+	# STRICT VISUAL ROADBLOCK GATES: If you reach the absolute edge, block all further scrolling!
+	if next_intended_index < 0 or next_intended_index >= total_slots_count:
+		print("🎒 INVENTORY BLOCKED: Reached the absolute end of the belt slot array line!")
 		return
 		
-	# Apply your newly verified index slot safely since it sits inside the safe zone bounds
-	menu_highlighted_gadget = target_index as GadgetType
-	active_highlighted_gadget = menu_highlighted_gadget # Keep system trackers mirrored
+	# Verify that the targeted slot contains a valid filled item data card
+	if not is_instance_valid(equipped_gadgets_deck[next_intended_index]):
+		return
+
+	# Lock the index position down permanently
+	current_selected_gadget_index = next_intended_index
+	current_selected_index = next_intended_index
 	
-	# Dynamically wake up your virtual camera nodes based on the new scroll choice
+	var active_card: GadgetResource = equipped_gadgets_deck[next_intended_index]
+	if is_instance_valid(active_card):
+		current_selected_gadget = next_intended_index as GadgetType
+		menu_highlighted_gadget = next_intended_index as GadgetType
+		active_highlighted_gadget = next_intended_index as GadgetType
+		
+		# Telemetry Logger
+		print("🎒 INVENTORY POSITION -> Index Slot: [", next_intended_index, "] | Weapon Equipped: '", active_card.display_name, "'")
+			
+	update_ammo_hud_display()
+	update_physical_belt_mesh_visibility()
 	manage_virtual_camera_priorities(menu_highlighted_gadget)
-	
 
 
 func manage_virtual_camera_priorities(target_gadget: GadgetType) -> void:
 	if not is_radial_menu_open:
 		if is_instance_valid(exploration_pcam): exploration_pcam.priority = 30
 		return
-
 	if is_instance_valid(exploration_pcam): exploration_pcam.priority = 0
-		
-	# Reset baselines
+	
+	# Sleep all utility cameras
 	if is_instance_valid(bola_pcam): bola_pcam.priority = 0
 	if is_instance_valid(trap_pcam): trap_pcam.priority = 0
 	if is_instance_valid(pebble_pcam): pebble_pcam.priority = 0
 	if is_instance_valid(slime_pcam): slime_pcam.priority = 0
 	if is_instance_valid(bomb_pcam): bomb_pcam.priority = 0
 	
-	# Wake up the precise camera node corresponding to your new layout structure!
+	# Wake up the virtual camera slot matching her scroll selection
 	match target_gadget:
 		GadgetType.BOLA:
 			if is_instance_valid(bola_pcam): bola_pcam.priority = 25
-			morph_camera_track_finish_line(left_hip_marker) # === INJECT THE PLACEMENT TRIGGERS! ===
-		GadgetType.TRAP:
-			if is_instance_valid(trap_pcam): trap_pcam.priority = 25
-			morph_camera_track_finish_line(waist_left_marker)
+			morph_camera_track_finish_line(left_hip_marker)
+
 		GadgetType.PEBBLE:
 			if is_instance_valid(pebble_pcam): pebble_pcam.priority = 25
 			morph_camera_track_finish_line(waist_center_marker)
@@ -1520,148 +1337,158 @@ func manage_virtual_camera_priorities(target_gadget: GadgetType) -> void:
 		GadgetType.BOMB:
 			if is_instance_valid(bomb_pcam): bomb_pcam.priority = 25
 			morph_camera_track_finish_line(right_hip_marker)
+		GadgetType.LAUNCHER:
+			if is_instance_valid(exploration_pcam): exploration_pcam.priority = 30
+		GadgetType.TRAP:
+			if is_instance_valid(trap_pcam): trap_pcam.priority = 25
+			morph_camera_track_finish_line(waist_left_marker)
+			
+			# Hides the throw ribbons and forces the Wall Preview to wake up!
+			if is_instance_valid(indicator_rig):
+				var lob_pointer = indicator_rig.get_node_or_null("Lob_Line_Pointer/Line_Visual")
+				var wall_trap_pointer = indicator_rig.get_node_or_null("Wall_Trap_Pointer")
+				
+				if is_instance_valid(lob_pointer): lob_pointer.visible = false
+				if is_instance_valid(wall_trap_pointer):
+					wall_trap_pointer.visible = is_actively_aiming_gadget
+					# Safety fall-through clear: If she isn't aiming, force previews to pack away instantly
+					if not is_actively_aiming_gadget and wall_trap_pointer.has_method("_hide_all_holographic_previews"):
+						wall_trap_pointer._hide_all_holographic_previews()
+
+
+func _deploy_physical_wall_harpoon_trap(pos_a: Vector3, pos_b: Vector3) -> void:
+	var active_card = equipped_gadgets_deck[current_selected_gadget_index]
+	if not is_instance_valid(active_card) or not active_card.projectile_scene_file: return
 	
-func update_physical_belt_mesh_visibility() -> void:
-	# 1. STEPPED BOLA REMOVALS: Displays individual rope bundles based on true ammo counts
-	if is_instance_valid(bola_mesh_01): bola_mesh_01.visible = (current_bola_ammo >= 1)
-	if is_instance_valid(bola_mesh_02): bola_mesh_02.visible = (current_bola_ammo >= 2)
-	if is_instance_valid(bola_mesh_03): bola_mesh_03.visible = (current_bola_ammo >= 3)
+	# Instantiate the physical mechanical trap replica asset into the scene root tree
+	var trap_instance = active_card.projectile_scene_file.instantiate() as Node3D
+	get_tree().current_scene.add_child(trap_instance)
 	
-	# 2. MULTI-PART RIG CONTAINER TOGGLES: Pouch meshes vanish when completely empty
-	if is_instance_valid(trap_rig): trap_rig.visible = (trap_ammo > 0)
-	if is_instance_valid(slime_rig): slime_rig.visible = (slime_ammo > 0)
-	if is_instance_valid(pebble_rig): pebble_rig.visible = true # Infinite pebbles stay on always
-	if is_instance_valid(bomb_rig): bomb_rig.visible = (bomb_ammo > 0)
-
-	# 3. SURF & PARRIES SHIELD VISIBILITY CONTROL MATRIX
-	var back_mesh = get_node_or_null("EiraVisualCapsuleMesh/BackShieldMesh")
-	var hand_mesh = get_node_or_null("EiraVisualCapsuleMesh/HandShieldMesh")
-	var feet_mesh = get_node_or_null("FeetMarker/FeetShieldMesh")
-
-	# CHECK ACTIVE CONDITIONS: Are we surfing or preparing a mid-air drop?
-	if current_locomotion_mode == LocomotionState.SLIDING or current_locomotion_mode == LocomotionState.AIR_PREP:
-		if back_mesh: back_mesh.visible = false
-		if hand_mesh: hand_mesh.visible = false
-		if feet_mesh: feet_mesh.visible = true # Feet surfboard becomes the only visible shield mesh
-	else:
-		# STANDARD EXPLORATION LAYOUT: Reset parameters back to standard overworld idling
-		if back_mesh: back_mesh.visible = true
-		if feet_mesh: feet_mesh.visible = false
+	# Dispatch coordinates straight down into your reworked tripwire_trap.gd script!
+	if trap_instance.has_method("initialize_tripwire"):
+		trap_instance.initialize_tripwire(pos_a, pos_b)
 		
-		# PARRY DECOUPLE GATE: Hand shield is strictly hidden unless actively blocking/parrying
-		if hand_mesh: 
-			hand_mesh.visible = is_parrying
-
-func clear_all_gadget_camera_priorities() -> void:
-	# 1. Force your Overworld gameplay camera back up to full control tier on exit
-	if is_instance_valid(exploration_pcam):
-		exploration_pcam.priority = 30
+	# Subtract 1 trap card item token from her inventions pouch record dictionary [PDF: 0.1.26]
+	if current_ammo_deck_record.has(active_card.display_name):
+		current_ammo_deck_record[active_card.display_name] -= 1
+		trap_ammo = current_ammo_deck_record[active_card.display_name]
 		
-	# Instantly drop priority weights down to zero
-	if is_instance_valid(bola_pcam): bola_pcam.priority = 0
-	if is_instance_valid(trap_pcam): trap_pcam.priority = 0
-	if is_instance_valid(slime_pcam): slime_pcam.priority = 0
-	if is_instance_valid(pebble_pcam): pebble_pcam.priority = 0
-	if is_instance_valid(bomb_pcam): bomb_pcam.priority = 0
+	# Turn off the placement preview holograms instantly on fire frame
+	if is_instance_valid(indicator_rig):
+		var wall_trap_pointer = indicator_rig.get_node_or_null("Wall_Trap_Pointer")
+		if is_instance_valid(wall_trap_pointer): wall_trap_pointer.visible = false
+	
+	print("TRAP COUPLING: Mechanical structural harpoon case successfully mounted into game world map!")
 
+func execute_dynamic_melee_strike_pipeline() -> void:
+	var overworld_enemies = get_tree().get_nodes_in_group("EnemyGroup")
+	var target_guard: CharacterBody3D = null
+	var shortest_reach: float = 2.4 
+	
+	for guard in overworld_enemies:
+		if is_instance_valid(guard) and "current_phase" in guard:
+			if guard.current_phase == guard.PatrolPhase.STUNNED: continue
+			var dist: float = global_position.distance_to(guard.global_position)
+			if dist < shortest_reach:
+				shortest_reach = dist
+				target_guard = guard
 
-func morph_camera_track_finish_line(target_marker: Marker3D) -> void:
-	if not is_instance_valid(target_marker) or not is_instance_valid(placeholder_hand_rig): 
+	if not is_instance_valid(target_guard): return
+	var push_vector: Vector3 = -global_transform.basis.z.normalized()
+
+	var current_suspicion: float = 0.0
+	if target_guard.has_node("VisionSensor3D"):
+		current_suspicion = target_guard.get_node("VisionSensor3D").current_suspicion
+
+	var is_sneaking: bool = get("is_crouching") if "is_crouching" in self else false
+	
+	if is_sneaking and current_suspicion < 15.0:
+		var takedown_label = target_guard.get_node_or_null("Takedown_Label") as Label3D
+		if is_instance_valid(takedown_label) and "DANGER" in takedown_label.text:
+			print("⚠️ STEALTH TAKEDOWN LOCKED: You are currently being watched by an ally guard!")
+			target_guard.take_damage(1, push_vector) 
+			return
+			
+		print("🥷 SILENT TAKEDOWN SUCCESS: Eira silent-grapples the guard out cold!")
+		target_guard.execute_stealth_stun(push_vector)
 		return
+	else:
+		print(" Combat Impact: Smashing shield mesh forward to strip posture stability!")
 		
-	# TACTILE HAND TRANSITION MOTOR
-	var arm_cleanup = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		# FIXED COMBAT CRASH: Wrapped the main combat strike inside our safe verification method
+		if target_guard.has_method("take_damage"):
+			target_guard.take_damage(1, push_vector)
+		else:
+			print(" TARGET PIPELINE ERROR: Guard mesh lacks a valid take_damage() method!")
+
+func execute_shield_counter_intercept() -> void:
+	var overworld_enemies = get_tree().get_nodes_in_group("EnemyGroup")
+	var push_vector: Vector3 = -global_transform.basis.z.normalized()
 	
-	# FIXED COORDINATES: Pulls the local offset parameters to track her bones natively!
-	arm_cleanup.tween_property(
-		placeholder_hand_rig, 
-		"position", 
-		target_marker.position, 
-		0.12
+	for guard in overworld_enemies:
+		# Check if this specific guard node is currently in an active attack windup state!
+		if is_instance_valid(guard) and guard.get("is_vulnerable_to_counter") == true:
+			print("🛡️ COUNTER SUCCESS: Eira catches the blade hilt on her shield face and counters!")
+			
+			# Close his vulnerability window, halt his swing threat, and strip 2 hidden Posture points!
+			guard.is_vulnerable_to_counter = false
+			
+			if guard.has_method("take_damage"):
+				guard.take_damage(2, push_vector)
+			
+			# Spawn a quick smoke dust particle cloud over his mesh [PDF: 0.1.18]
+			if guard.has_method("spawn_procedural_takedown_fx_cloud"):
+				guard.spawn_procedural_takedown_fx_cloud()
+				
+			# Reset your tool launcher cooldown frames instantly as a Freeflow reward!
+			is_gadget_on_cooldown = false
+			return
+	print("❌ COUNTER MISSED: Tapped counter button outside of a guard's strike window.")
+
+
+# =============================================================================
+#     13. PROCEDURAL TRAVERSAL CLIMB TELEPORTATION MATRIX [PDF: 0.1.23]
+# =============================================================================
+func execute_procedural_ledge_pull(target_landing_global_pos: Vector3) -> void:
+	# Enforce a hard state lock to protect her from gravity and physics slips [PDF: 0.1.72]
+	is_climbing = true
+	velocity = Vector3.ZERO
+	
+	# Smoothly glide her capsule up and over the ledge curve using a high-performance Tween!
+	var climb_tween = create_tween().set_parallel(true).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	climb_tween.tween_property(self, "global_position", target_landing_global_pos, 0.42)
+	
+	# Clean up and safely restore normal walking freedom upon arrival at the top deck
+	climb_tween.chain().tween_callback(func():
+		is_climbing = false
+		velocity = Vector3.ZERO
+		print("🥷 LOCOMOTION: Ledge mantle completed. Standard walking states restored.")
 	)
 
-func draw_predictive_lob_trajectory_path(_delta: float) -> void:
-	# 1. VISUAL CANVAS VALIDATION SAFETY GATE
-	var line_renderer = get_node_or_null("Lob_Line_Pointer/Line_Visual") as MeshInstance3D
-	if not is_instance_valid(line_renderer) or not line_renderer.visible: 
-		return
-	if not is_instance_valid(camera): return
 
-	# =============================================================================
-	#     2. MOUSE-TO-WORLD INTERCEPT MATRIX (DYNAMIC DISTANCE CALCULATOR)
-	# =============================================================================
-	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
-	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
-	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
+# =============================================================================
+#     🧭 UNIFIED AIM DIRECTION SANITIZER MATRIX [PDF: 0.1.74, 0.1.75]
+# =============================================================================
+func get_validated_aim_direction() -> Vector3:
+	var final_target_direction: Vector3 = Vector3.ZERO
 	
-	var ground_plane = Plane(Vector3.UP, global_position.y)
-	var target_mouse_world_point = ground_plane.intersects_ray(ray_origin, ray_normal)
-	
-	var throw_direction: Vector3 = -global_transform.basis.z.normalized()
-	if is_instance_valid(eira_body_mesh):
-		throw_direction = -eira_body_mesh.global_transform.basis.z.normalized()
+	# Look up the live cursor telemetry from your master crosshair component node
+	var aim_node = get_node_or_null("Systems/AimController")
+	if is_instance_valid(aim_node):
+		final_target_direction = aim_node.aim_direction
 		
-	# This is our active tracker variable!
-	var active_lob_distance: float = 8.0 
-	
-	if target_mouse_world_point:
-		var distance_vector: Vector3 = target_mouse_world_point - global_position
-		distance_vector.y = 0.0 
+	# If mouse tracking is inactive or empty, immediately fall back to your gamepad joystick vectors!
+	if final_target_direction.length_squared() < 0.01:
+		final_target_direction = controller_aim_direction
 		
-		# FIXED: Save the length directly into active_lob_distance (Removed the underscore!)
-		active_lob_distance = distance_vector.length()
-		if active_lob_distance > 0.1:
-			throw_direction = distance_vector.normalized()
-			
-	# Clamp our active variable safely between 1.5m and 14.0m
-	active_lob_distance = clampf(active_lob_distance, 1.5, 14.0)
-
-	# 3. THE ADAPTIVE LAUNCH STRENGTH MATH MATRIX
-	var gravity_accel: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-	# Fixed tracking: This equation now successfully scales based on your mouse cursor!
-	var adaptive_launch_strength: float = sqrt((active_lob_distance * gravity_accel) / sin(2.0 * deg_to_rad(45.0)))
-	
-	# Assemble the final curving trajectory velocity vector payload
-	var start_pos: Vector3 = global_position + Vector3(0.0, 0.8, 0.0) + (throw_direction * 0.6)
-	var trajectory_velocity: Vector3 = (throw_direction + Vector3(0.0, 0.45, 0.0)).normalized() * adaptive_launch_strength
-	
-	# 4. RUN AIRBORNE TRAJECTORY PREVIEW TICK LOOPS
-	var simulated_position: Vector3 = start_pos
-	
-	# FIXED: Set this to exactly your engine's true 3D physics frame delta step time!
-	var step_time_delta: float = 0.01667
-	
-	var total_path_points_list: Array[Vector3] = [start_pos]
-	var world_space_query = get_world_3d().direct_space_state
-	
-	# FIXED: Expanded the loop range from 40 to 95 frames to compensate for the 
-	# tighter, high-precision step timing so the arc line can reach your mouse cursor!
-	for step in range(95):
-		var next_simulated_position: Vector3 = simulated_position + (trajectory_velocity * step_time_delta)
-		trajectory_velocity.y -= gravity_accel * step_time_delta
+	# Emergency fallback: If both are dead, use her visual torso's front-facing axis heading
+	if final_target_direction.length_squared() < 0.01 and is_instance_valid(eira_body_mesh):
+		final_target_direction = -eira_body_mesh.global_transform.basis.z.normalized()
 		
-		var ground_ray_intercept = PhysicsRayQueryParameters3D.create(simulated_position, next_simulated_position)
-		ground_ray_intercept.exclude = [self.get_rid()]
-		
-		var intercept_collision_result = world_space_query.intersect_ray(ground_ray_intercept)
-		if not intercept_collision_result.is_empty():
-			var landing_impact_coordinate: Vector3 = intercept_collision_result["position"]
-			total_path_points_list.append(landing_impact_coordinate)
-			break
-			
-		simulated_position = next_simulated_position
-		total_path_points_list.append(simulated_position)
-		
-	# 5. DRAW DYNAMIC GEOMETRY STRING ARRAYS ON THE EMPTY CANVAS
-	if not line_renderer.mesh is ImmediateMesh:
-		line_renderer.mesh = ImmediateMesh.new()
-		
-	var drawing_mesh_surface = line_renderer.mesh as ImmediateMesh
-	drawing_mesh_surface.clear_surfaces()
+	# HARD LIMIT: Flatten the Y axis completely to prevent projectiles from firing deep into the floor!
+	final_target_direction.y = 0.0
 	
-	drawing_mesh_surface.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	for path_vertex_point in total_path_points_list:
-		var local_arc_point: Vector3 = line_renderer.to_local(path_vertex_point)
-		drawing_mesh_surface.surface_set_color(Color("#33ccff"))
-		drawing_mesh_surface.surface_add_vertex(local_arc_point)
-	drawing_mesh_surface.surface_end()
+	if final_target_direction.length_squared() < 0.01:
+		final_target_direction = -global_transform.basis.z.normalized()
+		
+	return final_target_direction.normalized()

@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://c317j6aq4r7xs"]
+[gd_scene format=3 uid="uid://c317j6aq4r7xs"]
 
 [ext_resource type="Script" uid="uid://jx3mov22dbiw" path="res://scripts/smudge_companion.gd" id="1_ynon2"]
 
@@ -8,12 +8,12 @@ radius = 0.8
 [sub_resource type="SphereMesh" id="SphereMesh_ynon2"]
 radius = 0.8
 
-[node name="Smudge" type="CharacterBody3D"]
+[node name="Smudge" type="CharacterBody3D" unique_id=727381265]
 collision_layer = 4
 script = ExtResource("1_ynon2")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1254171957]
 shape = SubResource("SphereShape3D_e0s8d")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1241709392]
 mesh = SubResource("SphereMesh_ynon2")
